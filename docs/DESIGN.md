@@ -565,3 +565,408 @@ Memory Usage        | 64MB         | 96MB          | 1.5x
 ## 下一步
 
 下一个提交将实现 **std::string 高效使用**，学习 SSO (Small String Optimization) 和字符串优化技巧。
+
+---
+
+# Commit 4: 字符串处理 - std::string 高效使用
+
+## 概述
+
+本提交实现了高效的字符串工具函数库，展示了 C++17 中 `std::string` 的优化特性，特别是 SSO (Small String Optimization) 和现代 C++ 的字符串处理技巧。
+
+## 代码统计
+
+```
+文件                          | 行数 | 说明
+------------------------------|------|------
+include/nano_redis/string_utils.h |  140 | 字符串工具定义
+src/string_utils.cc              |  320 | 字符串工具实现
+tests/string_bench.cc             |  230 | 性能基准测试
+------------------------------|------|------
+总计                          |  690 |
+```
+
+## 设计决策
+
+### 1. 为什么只用 std::string？
+
+| 方案 | 优点 | 缺点 | 适用场景 |
+|------|------|------|----------|
+| **std::string** | - C++17 标准库<br/>- SSO 优化<br/>- move 语义<br/>- 零额外依赖 | - 超长字符串有拷贝开销 | 通用字符串处理 |
+| **std::string_view** | - 零拷贝<br/>- 任意字符串类型 | - 需要管理生命周期<br/>- 不能修改 | 只读视图 |
+| **absl::Cord** | - 大字符串高效<br/>- 分片存储 | - 额外依赖<br/>- 复杂度高 | 超大字符串（>1MB） |
+
+**决策**：使用 `std::string`，原因：
+1. C++17 标准库，无需额外依赖
+2. SSO 优化（小字符串栈上分配）
+3. move 语义避免不必要的拷贝
+4. 足够高效，满足教学需求
+
+### 2. std::string 的 SSO (Small String Optimization)
+
+#### SSO 原理
+
+```cpp
+// GCC/Clang 的 std::string 内部结构（简化）
+class string {
+  union {
+    struct {
+      char* ptr;        // 堆指针（大字符串）
+      size_t size;
+      size_t capacity;
+    } long_data;
+    
+    struct {
+      char data[16];    // 内联存储（小字符串）
+      unsigned char size;  // 最高位标志位
+    } short_data;
+  };
+};
+
+// 判断是 SSO 模式还是堆分配模式
+bool is_short() const {
+  return (short_data.size & 0x80) == 0;
+}
+```
+
+#### SSO 阈值
+
+```
+GCC/Clang 默认: 15 字节（不包含 '\0'）
+MSVC 默认: 15 字节
+
+为什么是 15？
+  - 16 字节对齐（cache line 友好）
+  - 包含 size 字段（1 字节）
+  - 剩余 15 字节存储字符
+```
+
+#### SSO 性能优势
+
+```
+操作          | 小字符串（SSO） | 大字符串（堆） | 差异
+--------------|----------------|---------------|------
+分配          | ~0ns           | ~50ns         | ∞
+拷贝          | ~5ns           | ~100ns        | 20x
+释放          | ~0ns           | ~50ns         | ∞
+内存访问      | L1 cache       | L2/L3 cache   | 5-10x
+```
+
+### 3. 字符串拷贝优化技巧
+
+#### 技巧 1：使用 std::move 转移所有权
+
+```cpp
+// ❌ 错误：不必要的拷贝
+std::string Process(std::string s) {
+  std::string result = s + " processed";
+  return result;
+}
+
+// ✅ 正确：使用移动语义
+std::string Process(std::string s) {
+  std::string result = std::move(s) + " processed";
+  return result;
+}
+```
+
+#### 技巧 2：引用传递（只读）
+
+```cpp
+// ❌ 错误：值传递导致拷贝
+bool IsValid(std::string s) {
+  return !s.empty();
+}
+
+// ✅ 正确：const 引用传递
+bool IsValid(const std::string& s) {
+  return !s.empty();
+}
+```
+
+#### 技巧 3：返回值优化（RVO/NRVO）
+
+```cpp
+// C++17 强制 RVO（Named Return Value Optimization）
+std::string BuildString() {
+  std::string result;
+  result.reserve(100);
+  result += "Hello";
+  result += " World";
+  return result;  // 直接返回，无需拷贝（RVO）
+}
+```
+
+### 4. 避免不必要的临时字符串
+
+#### 问题代码
+
+```cpp
+std::string result;
+for (const auto& item : items) {
+  result += "[" + item + "]";  // 创建临时字符串
+}
+```
+
+#### 优化代码
+
+```cpp
+std::string result;
+result.reserve(items.size() * 20);  // 预分配
+for (const auto& item : items) {
+  result += "[";
+  result += item;
+  result += "]";  // 直接追加，无临时字符串
+}
+```
+
+### 5. 零拷贝字符串操作
+
+#### Split 操作
+
+```cpp
+// ✅ 高效：使用 reserve 预分配
+std::vector<std::string> StringUtils::Split(const std::string& s, char delim) {
+  std::vector<std::string> result;
+  size_t count = std::count(s.begin(), s.end(), delim) + 1;
+  result.reserve(count);  // 避免多次重新分配
+
+  size_t start = 0;
+  size_t pos = s.find(delim);
+  while (pos != std::string::npos) {
+    result.push_back(s.substr(start, pos - start));  // RVO
+    start = pos + 1;
+    pos = s.find(delim, start);
+  }
+  result.push_back(s.substr(start));
+
+  return result;  // RVO
+}
+```
+
+#### Join 操作
+
+```cpp
+// ✅ 高效：预计算总大小
+std::string StringUtils::Join(const std::vector<std::string>& parts,
+                               const std::string& delimiter) {
+  // 计算最终大小
+  size_t total_size = 0;
+  for (const auto& part : parts) {
+    total_size += part.size();
+  }
+  total_size += delimiter.size() * (parts.size() - 1);
+
+  std::string result;
+  result.reserve(total_size);  // 一次性分配
+
+  for (size_t i = 0; i < parts.size(); ++i) {
+    if (i > 0) {
+      result += delimiter;
+    }
+    result += parts[i];  // 使用 += 比 append 快
+  }
+
+  return result;  // RVO
+}
+```
+
+## 架构图
+
+```
+std::string 内存布局：
+
+小字符串（SSO, ≤15 字节）：
+┌────────────────────────────────┐
+│ [inline buffer: 15 bytes]      │
+│ [size: 1 byte, MSB=0]           │
+└────────────────────────────────┘
+  栈上存储，无堆分配
+
+大字符串（>15 字节）：
+┌────────────────────────────────┐
+│ [ptr: heap pointer]            │
+│ [size: 8 bytes]                │
+│ [capacity: 8 bytes]             │
+└────────────────────────────────┘
+  堆上分配，动态大小
+
+StringUtils 工具函数：
+
+┌─────────────────────────────────┐
+│ 查询操作                         │
+│ - StartsWithIgnoreCase         │
+│ - EndsWithIgnoreCase           │
+│ - CompareIgnoreCase            │
+├─────────────────────────────────┤
+│ 转换操作                         │
+│ - ToLower (原地)                │
+│ - ToLowerCopy (返回新字符串)      │
+│ - ToUpper (原地)                │
+│ - ToUpperCopy (返回新字符串)      │
+├─────────────────────────────────┤
+│ 修剪操作                         │
+│ - TrimLeft                      │
+│ - TrimRight                     │
+│ - Trim                          │
+├─────────────────────────────────┤
+│ 分割和连接                       │
+│ - Split                         │
+│ - Join                          │
+│ - Concat                        │
+├─────────────────────────────────┤
+│ 转义操作                         │
+│ - Escape                        │
+│ - Unescape                      │
+├─────────────────────────────────┤
+│ 类型转换                         │
+│ - IntToString                   │
+│ - StringToInt                   │
+└─────────────────────────────────┘
+```
+
+## 性能分析
+
+### 理论性能
+
+| 操作 | 复杂度 | 说明 |
+|------|--------|------|
+| ToLower (原地) | O(n) | 遍历字符 |
+| ToLowerCopy | O(n) | 拷贝 + 转换 |
+| Split | O(n) | 单次遍历 |
+| Join | O(n) | 单次遍历 + 预分配 |
+| CompareIgnoreCase | O(n) | 字符比较 |
+
+### 实际性能（预期）
+
+```
+基准测试（1M operations）：
+
+操作                      | 优化版本 | 未优化版本 | 提升
+--------------------------|---------|-----------|------
+ToLower (原地)             | 10ms    | 10ms      | 1x
+ToLowerCopy (move)         | 15ms    | 25ms      | 1.7x
+Split (100 parts)         | 80ms    | 200ms     | 2.5x
+Join (100 parts)           | 60ms    | 150ms     | 2.5x
+Concat (with reserve)      | 50ms    | 250ms     | 5x
+CompareIgnoreCase         | 20ms    | 30ms      | 1.5x
+小字符串拷贝（SSO）        | 5ns     | 5ns       | 1x
+大字符串拷贝（堆）          | 100ns   | 200ns     | 2x
+```
+
+### 内存使用对比
+
+```
+场景: 存储 100K 字符串
+
+小字符串（平均 8 字符）：
+  - SSO: ~1.6MB（栈上）
+  - 堆分配: ~10MB（堆上）
+  - 节省: 84%
+
+大字符串（平均 100 字符）：
+  - 堆分配: ~10MB
+  - 预分配优化: ~10MB
+  - 节省: 0%
+```
+
+## 学习要点
+
+### SSO (Small String Optimization)
+
+1. **判断字符串是否使用 SSO**
+   ```cpp
+   constexpr size_t SSOThreshold() {
+     std::string tmp;
+     return tmp.capacity();  // 空字符串的 capacity 就是 SSO 阈值
+   }
+
+   bool IsSSO(const std::string& s) {
+     return s.size() <= SSOThreshold();
+   }
+   ```
+
+2. **SSO 对性能的影响**
+   - 小字符串：零堆分配，栈上存储
+   - 缓存友好：连续内存布局
+   - 自动优化：编译器和库自动处理
+
+### 字符串拷贝优化
+
+1. **std::move 语义**
+   ```cpp
+   // 转移所有权，避免深拷贝
+   std::string src = "Hello";
+   std::string dest = std::move(src);  // src 变为空
+   ```
+
+2. **返回值优化（RVO）**
+   ```cpp
+   // C++17 强制 RVO
+   std::string CreateString() {
+     std::string s = "Hello";
+     return s;  // 直接返回，无拷贝
+   }
+   ```
+
+3. **引用传递**
+   ```cpp
+   // 只读：const 引用
+   void Process(const std::string& s);
+   
+   // 写入：指针或引用
+   void Modify(std::string* s);
+   void Modify(std::string& s);
+   ```
+
+### 内存预分配
+
+1. **reserve() 的作用**
+   ```cpp
+   std::string s;
+   s.reserve(1000);  // 预分配 1000 字节
+   
+   for (int i = 0; i < 100; ++i) {
+     s += "word";  // 无重新分配
+   }
+   ```
+
+2. **预分配的好处**
+   - 避免多次重新分配
+   - 减少内存拷贝
+   - 提升性能 2-5x
+
+### 零拷贝操作
+
+1. **避免临时字符串**
+   ```cpp
+   // ❌ 创建临时字符串
+   result += "[" + item + "]";
+   
+   // ✅ 直接追加
+   result += "[";
+   result += item;
+   result += "]";
+   ```
+
+2. **使用 RVO/NRVO**
+   ```cpp
+   // ✅ 返回值优化
+   std::string Build() {
+     std::string result;
+     // ...
+     return result;  // NRVO
+   }
+   ```
+
+## 验收标准
+
+- [x] StringUtils 类实现完成
+- [x] 所有工具函数实现完成
+- [x] 性能基准测试实现
+- [x] 文档完整
+- [ ] 运行基准测试并验证性能提升
+
+## 下一步
+
+下一个提交将实现 **单元测试框架**，建立 TDD（测试驱动开发）流程和基准测试框架。

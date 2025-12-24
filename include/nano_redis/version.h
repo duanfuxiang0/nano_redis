@@ -23,7 +23,7 @@ constexpr int kPatchVersion = 0;
 
 constexpr const char* kVersionString = "0.1.0";
 
-inline const char* GetVersion() { return kVersionString; }
+const char* GetVersion();
 
 }  // namespace nano_redis
 

@@ -1,3 +1,20 @@
+# MCP Tools Usage Guidelines
+
+## Fast Apply (morph mcp)
+- **Tool**: `edit_file`
+- **When to use**: Use instead of `str_replace` or full file writes
+- **Why**: Works with partial code snippets—no need to provide complete file content
+- **Example**: When modifying a function, you only need to include that function in the edit
+
+## Warp Grep (morph mcp)
+- **Tool**: `warpgrep_codebase_search`
+- **What it does**: A subagent that finds relevant context using semantic search
+- **When to use**: At the beginning of codebase explorations to quickly locate relevant files
+- **Best practices**:
+  - Use for broad semantic queries, not keyword searches
+  - Ask about flows, architecture, or error sources
+  - Ideal questions: "Find the XYZ flow", "How does XYZ work", "Where is XYZ handled?", "Where is <error message> coming from?"
+
 # Commands
 - Build: `mkdir build && cd build && cmake .. && cmake --build .`
 - Run all tests: `cd build && ctest`
@@ -16,7 +33,3 @@
 - Testing: GoogleTest, use `TEST(Suite, Name)` macro
 - Indentation: 2 spaces
 - Include order: project headers first, then system headers
-
-Fast Apply: IMPORTANT: Use `edit_file` over `str_replace` or full file writes. It works with partial code snippets—no need for full file content.
-
-Warp Grep: warp-grep is a subagent that takes in a search string and tries to find relevant context. Best practice is to use it at the beginning of codebase explorations to fast track finding relevant files/lines. Do not use it to pin point keywords, but use it for broader semantic queries. "Find the XYZ flow", "How does XYZ work", "Where is XYZ handled?", "Where is <error message> coming from?"

@@ -20,7 +20,7 @@
 namespace nano_redis {
 
 TEST(VersionTest, GetVersionReturnsCorrectString) {
-  EXPECT_EQ(GetVersion(), "0.1.0");
+  EXPECT_STREQ(GetVersion(), "0.1.0");
 }
 
 TEST(VersionTest, VersionConstants) {

@@ -16,10 +16,10 @@ Nano-Redis 是一个教学用的 Redis 实现，专注于展示现代 C++ 编程
 | 组件 | 技术选择 | 原因 |
 |------|---------|------|
 | 网络 I/O | io_uring | 零拷贝、批量 syscall、高性能 |
-| 异步模型 | C++20 Coroutines | 现代化异步编程 |
+| 异步模型 | 自实现 Task<T> | C++17 兼容、可控执行模型 |
 | 主存储 | Abseil flat_hash_map | Swiss Table，SIMD 加速 |
 | 列表 | Abseil InlinedVector | 缓存友好，小列表零分配 |
-| 字符串 | string_view + Cord | 零拷贝、COW |
+| 字符串 | std::string | SSO 优化、标准库支持 |
 | 过期管理 | Time Wheel | O(1) 定时器操作 |
 | 内存分配 | Arena Allocator | 批量分配、无碎片 |
 
@@ -59,15 +59,19 @@ cmake --build .
 # 运行测试
 ./tests/version_test
 
+# 运行所有测试
+ctest
+
 # 运行基准测试（后续阶段）
 ./tests/arena_bench
 ```
 
 ## 依赖
 
-- **Abseil-Cpp**: 选择性使用特定组件
+- **Abseil-Cpp**: 通过 add_subdirectory 引入（本地目录）
 - **GoogleTest**: 单元测试框架
 - **Linux 5.1+**: io_uring 支持
+- **C++17**: GCC 8+ 或 Clang 7+
 
 ## 学习资源
 

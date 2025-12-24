@@ -32,6 +32,7 @@ set(REDIS_SOURCES
   src/version.cc
   src/arena.cc
   src/string_store.cc
+  src/string_utils.cc
 )
 
 set(REDIS_HEADERS
@@ -39,6 +40,7 @@ set(REDIS_HEADERS
   include/nano_redis/status.h
   include/nano_redis/arena.h
   include/nano_redis/string_store.h
+  include/nano_redis/string_utils.h
 )
 
 add_library(nano_redis STATIC ${REDIS_SOURCES} ${REDIS_HEADERS})
@@ -64,4 +66,7 @@ if(benchmark_FOUND)
   
   add_executable(hash_table_bench tests/hash_table_bench.cc)
   target_link_libraries(hash_table_bench nano_redis benchmark::benchmark)
+  
+  add_executable(string_bench tests/string_bench.cc)
+  target_link_libraries(string_bench nano_redis)
 endif()

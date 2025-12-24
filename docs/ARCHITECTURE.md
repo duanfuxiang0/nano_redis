@@ -1,815 +1,546 @@
-# Commit 1: 架构说明
+# Commit 1: Hello World - 架构说明
 
-## 整体架构
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Nano-Redis 0.1.0                       │
-├─────────────────────────────────────────────────────────────────┤
-│                                                           │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │        Public API Layer (include/nano_redis/)        │  │
-│  │                                                          │
-│  │  ┌──────────┐  ┌──────────┐                          │  │
-│  │  │ version  │  │ status   │                          │  │
-│  │  │   .h    │  │   .h     │                          │  │
-│  │  └──────────┘  └──────────┘                          │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                        ▲                                   │
-│                        │                                   │
-│  ┌─────────────────────┴───────────────────────────────┐  │
-│  │        Implementation Layer (src/)                   │  │
-│  │                                                          │
-│  │  ┌──────────┐                                          │  │
-│  │  │ version  │                                          │  │
-│  │  │   .cc    │                                          │  │
-│  │  └──────────┘                                          │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                        ▲                                   │
-│                        │                                   │
-│  ┌─────────────────────┴───────────────────────────────┐  │
-│  │        Test Layer (tests/)                        │  │
-│  │                                                          │
-│  │  ┌──────────────┐                                      │  │
-│  │  │ version_test │                                      │  │
-│  │  │     .cc      │                                      │  │
-│  │  └──────────────┘                                      │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                           │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │        Build Systems                                  │  │
-│  │                                                          │
-│  │  ┌──────────────┐  ┌──────────────┐              │  │
-│  │  │ BUILD.bazel  │  │ CMakeLists   │              │  │
-│  │  │             │  │     .txt     │              │  │
-│  │  └──────────────┘  └──────────────┘              │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                           │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## 模块设计
-
-### Version 模块
-
-**文件**:
-- `include/nano_redis/version.h` (公共 API)
-- `src/version.cc` (实现)
-
-**职责**:
-- 提供版本信息查询
-- 维护版本常量
-
-**接口**:
-```cpp
-// 编译期常量
-constexpr int kMajorVersion = 0;
-constexpr int kMinorVersion = 1;
-constexpr int kPatchVersion = 0;
-constexpr const char* kVersionString = "0.1.0";
-
-// 运行时函数
-const char* GetVersion();
-```
-
-### Status 模块
-
-**文件**:
-- `include/nano_redis/status.h` (头文件实现)
-
-**职责**:
-- 统一的错误处理
-- 错误信息传递
-
-**接口**:
-```cpp
-// 错误码
-enum class StatusCode {
-  kOk = 0,
-  kNotFound = 1,
-  kInvalidArgument = 2,
-  kInternalError = 3,
-  kAlreadyExists = 4,
-};
-
-// Status 类
-class Status {
-  Status();                          // 默认 OK
-  Status(StatusCode code, const std::string& message);
-
-  static Status OK();
-  static Status NotFound(const std::string& msg);
-  static Status InvalidArgument(const std::string& msg);
-  static Status Internal(const std::string& msg);
-  static Status AlreadyExists(const std::string& msg);
-
-  bool ok() const;
-  StatusCode code() const;
-  const std::string& message() const;
-  std::string ToString() const;
-};
-```
-
-## 依赖关系
+## 项目结构
 
 ```
-version.h  ────────┐
-                    ├─────> version_test.cc
-version.cc  ────────┘
-
-status.h   ─────────────> version_test.cc
+nano_redis/
+├── include/nano_redis/    # 公共头文件（稳定接口）
+│   ├── version.h          # 版本号
+│   └── status.h           # 错误处理
+├── src/                   # 实现文件
+│   └── version.cc         # 版本实现
+├── tests/                 # 单元测试
+│   └── version_test.cc    # 版本测试
+├── docs/                  # 文档
+│   ├── DESIGN.md          # 设计决策
+│   ├── ARCHITECTURE.md    # 架构说明
+│   ├── PERFORMANCE.md      # 性能分析
+│   └── LESSONS_LEARNED.md # 学习要点
+├── CMakeLists.txt         # CMake 构建
+└── README.md              # 项目说明
 ```
 
-## 数据流
-
-### 版本查询流程
+## 模块依赖关系
 
 ```
-Client Code
-     │
-     │ GetVersion()
-     ▼
-version.h (inline function)
-     │
-     │ return kVersionString
-     ▼
-Client receives "0.1.0"
+version.h
+  ├── status.h (错误处理)
+  └── version.cc (实现)
+      └── version_test.cc (测试)
 ```
 
-### 错误处理流程
+## 数据流图
 
 ```
-Client Code
-     │
-     │ Status::NotFound("key not found")
-     ▼
-Status(code=kNotFound, message="key not found")
-     │
-     │ .ok() → false
-     │ .code() → kNotFound
-     │ .message() → "key not found"
-     │ .ToString() → "NOT_FOUND: key not found"
-     ▼
-Error Handling
+用户调用 GetVersion()
+  ↓
+返回 kVersionString (编译期常量)
+  ↓
+用户获取版本信息
 ```
 
-## 扩展点
+## 编译流程
 
-### 后续模块可以依赖的基础
-
-1. **Status**: 所有模块的错误处理
-   ```cpp
-   Status DoSomething() {
-     if (error) {
-       return Status::Internal("operation failed");
-     }
-     return Status::OK();
-   }
-   ```
-
-2. **Version**: 版本检查和兼容性
-   ```cpp
-   if (client_version > kCurrentVersion) {
-     return Status::InvalidArgument("version mismatch");
-   }
-   ```
-
-## 编译模型
-
-### 单元测试编译
-
-```
-CMake:
-  version_test.cc (test) + version.cc (src) + GTest
-          ↓
-    version_test (executable)
-
-Bazel:
-  version_test.cc (test) + version.cc (src) + GTest
-          ↓
-    version_test (executable)
-```
-
-### 静态库编译
-
-```
-CMake:
-  version.cc (src) + status.h (header)
-           ↓
-     nano_redis (static library)
-
-Bazel:
-  version.cc (src) + status.h (header)
-           ↓
-     nano_redis (static library)
+```bash
+CMakeLists.txt
+  ↓
+配置编译选项 (C++17, -Wall -Wextra -Werror)
+  ↓
+添加源文件 (version.cc)
+  ↓
+链接 Abseil (flat_hash_map)
+  ↓
+生成可执行文件 (version_test)
+  ↓
+运行测试
 ```
 
 ---
 
 # Commit 2: Arena Allocator - 架构说明
 
-## 模块设计
-
-### Arena 模块
-
-**文件**:
-- `include/nano_redis/arena.h` (公共 API)
-- `src/arena.cc` (实现)
-
-**职责**:
-- 高效的批量内存分配
-- 内存对齐支持
-- 自动内存管理
-
-**接口**:
-```cpp
-class Arena {
- public:
-  Arena();                                    // 默认构造
-  explicit Arena(size_t block_size);          // 指定块大小
-
-  void* Allocate(size_t size,                // 分配内存
-                 size_t alignment = alignof(std::max_align_t));
-  
-  void Reset();                               // 释放所有内存
-  
-  size_t MemoryUsage() const;                 // 内存使用量
-  size_t BlockCount() const;                  // 块数量
-  size_t AllocatedBytes() const;             // 已分配字节数
-};
-```
-
-## 内存布局
-
-### 当前块状态
+## Arena 内存布局
 
 ```
-┌────────────────────────────────────────────────────┐
-│ Block N (当前活跃块)                                │
-├────────────────────────────────────────────────────┤
-│ [已分配区域] [对齐填充] [空闲区域]                  │
-│     ↑ ptr_                           ↑ end_       │
-└────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│ Arena 类                                          │
+├─────────────────────────────────────────────────────┤
+│ char* ptr_         // 当前分配位置                  │
+│ char* end_         // 当前块结束位置                │
+│ size_t block_size_ // 每块大小 (默认 4KB)           │
+│ vector<void*> blocks_  // 已分配的块               │
+└─────────────────────────────────────────────────────┘
+
+内存布局：
+
+Block 0 (4KB):
+┌─────────────────────────────────────────┐
+│ [已分配区域] [空闲区域]                 │
+│    ↑ptr_              ↑end_              │
+└─────────────────────────────────────────┘
+
+Block 1 (4KB):  ┐
+                │ blocks_ 向量
+Block 2 (4KB):  │
+                │
 ```
 
-### 多块分配
+## 分配流程
 
 ```
-时间线：
-T0: 初始状态
-    ptr_ = nullptr, end_ = nullptr
-
-T1: Allocate(100)
-    ┌─────────────────────┐
-    │ [100B] [空闲]       │
-    └─────────────────────┘
-    ptr_ = 100, end_ = 4096
-
-T2: Allocate(500)
-    ┌─────────────────────┐
-    │ [100B] [500B] [空闲] │
-    └─────────────────────┘
-    ptr_ = 600, end_ = 4096
-
-T3: Allocate(4000) → 不够！
-    ┌─────────────────────┐
-    │ [100B] [500B]       │ ← Block 0 (保留)
-    └─────────────────────┘
-
-    ┌─────────────────────────────┐
-    │ [4000B] [空闲]               │ ← Block 1 (新分配)
-    └─────────────────────────────┘
-    ptr_ = 4000, end_ = 8192
+Allocate(size, alignment)
+  ↓
+检查当前块是否有足够空间
+  ↓ 否
+分配新的 Block (block_size_)
+  ↓
+计算对齐所需的填充 (padding)
+  ↓
+ptr_ += padding + size
+  ↓
+返回分配的地址
 ```
 
-### 块向量管理
+## 释放流程
 
 ```
-blocks_: std::vector<void*>
-    ↓
-    [Block0, Block1, Block2, ...]
-       ↓        ↓        ↓
-    void*    void*    void*
-   4KB      4KB      4KB
+Reset()
+  ↓
+遍历 blocks_ 向量
+  ↓
+free(block)  // 释放每个块
+  ↓
+blocks_.clear()
+  ↓
+ptr_ = end_ = nullptr
 ```
 
-## 分配算法
-
-### 对齐处理
-
-```cpp
-void* Allocate(size_t size, size_t alignment) {
-  // 当前地址
-  uintptr_t current = reinterpret_cast<uintptr_t>(ptr_);
-  
-  // 计算对齐偏移
-  uintptr_t offset = current % alignment;
-  uintptr_t padding = (offset == 0) ? 0 : alignment - offset;
-  
-  // 检查是否有足够空间
-  if (ptr_ + size + padding > end_) {
-    AllocateNewBlock(size + padding);
-    padding = reinterpret_cast<uintptr_t>(ptr_) % alignment;
-    padding = (padding == 0) ? 0 : alignment - padding;
-  }
-  
-  // 返回对齐后的地址
-  char* result = ptr_ + padding;
-  ptr_ += size + padding;
-  
-  return result;
-}
-```
-
-### 对齐示例
+## 内存对齐处理
 
 ```
-假设 ptr_ = 0x1003 (未对齐到 8 字节)
-alignment = 8
-
-offset = 0x1003 % 8 = 3
-padding = 8 - 3 = 5
-
-分配后：
-    [padding=5][size=16]
-    0x1003 ──────────> 0x1008 ─────────> 0x1018
-    ↑ ptr_          ↑ result         ↑ 新 ptr_
-    
-result = 0x1008 (已对齐到 8 字节)
+┌─────────────────────────────────────────┐
+│ 未对齐的指针：0x1003                    │
+│ 要求对齐：8 字节                        │
+│                                          │
+│ offset = 0x1003 % 8 = 3                │
+│ padding = 8 - 3 = 5                     │
+│                                          │
+│ 对齐后的指针：0x1008                    │
+│                                          │
+│ 填充：[XXX......]                        │
+│      ↑  ↑                              │
+│   padding 原地址                        │
+└─────────────────────────────────────────┘
 ```
-
-## 依赖关系
-
-```
-arena.h  ────────┐
-                 ├─────> arena_test.cc
-arena.cc  ────────┘
-
-arena.h  ───────────> arena_bench.cc
-```
-
-## 数据流
-
-### 分配流程
-
-```
-Client Code
-      │
-      │ arena.Allocate(64)
-      ▼
-检查对齐
-      │
-      ├─ 计算偏移
-      ├─ 检查空间
-      │
-      ▼
-空间不足?
-      │
-      ├─ Yes → AllocateNewBlock()
-      └─ No  → 直接分配
-              │
-              ├─ ptr_ += size + padding
-              └─ 返回对齐后的地址
-```
-
-### 释放流程
-
-```
-Client Code
-      │
-      │ arena.Reset()
-      ▼
-遍历 blocks_
-      │
-      ├─ for each block: ::operator delete(block)
-      └─ blocks_.clear()
-              │
-              ├─ ptr_ = nullptr
-              ├─ end_ = nullptr
-              └─ memory_usage_ = 0
-```
-
-## 性能特征
-
-### 时间复杂度
-
-| 操作 | 复杂度 | 说明 |
-|------|--------|------|
-| Allocate | O(1) | 指针移动 |
-| Reset | O(n) | n = 块数量 |
-| MemoryUsage | O(1) | 返回成员变量 |
-
-### 空间复杂度
-
-- **最佳情况**: 所有对象在一个块中
-- **最坏情况**: 每个对象需要新块（碎片化）
-- **平均情况**: 块利用率 ~80%
-
-## 扩展点
-
-### 后续优化方向
-
-1. **Per-thread Arena**
-   ```cpp
-   class ThreadLocalArena {
-     static thread_local Arena arena_;
-   public:
-     static void* Allocate(size_t size);
-   };
-   ```
-
-2. **对象池**
-   ```cpp
-   template<typename T>
-   class ObjectPool {
-     Arena arena_;
-   public:
-     T* Allocate() { return new (arena_.Allocate(sizeof(T))) T; }
-   };
-   ```
-
-3. **智能指针包装**
-   ```cpp
-   template<typename T>
-   using ArenaPtr = std::unique_ptr<T, ArenaDeleter>;
-   ```
-
-## 内存安全
-
-### 潜在问题及防护
-
-1. **悬空指针**: Reset() 后所有指针失效
-   - **防护**: 文档警告生命周期
-
-2. **内存泄漏**: 忘记调用 Reset()
-   - **防护**: 使用 RAII 包装器
-
-3. **越界访问**: Allocate 后写入超出大小
-   - **防护**: 使用调试模式检测
-
-### 调试支持
-
-```cpp
-#ifdef DEBUG
-  void* Allocate(size_t size, size_t alignment) {
-    // 在每个分配后添加 canary
-    char* ptr = static_cast<char*>(DoAllocate(size + 8));
-    memset(ptr + size, 0xAB, 8);
-    return ptr;
-  }
-  
-  void CheckCanaries() {
-    // 检查 canary 是否被破坏
-  }
-#endif
-```
-
 
 ---
 
-# Commit 3: String Store (flat_hash_map) - 架构说明
+# Commit 3: flat_hash_map vs unordered_map - 架构说明
 
-## 模块设计
-
-### StringStore 模块
-
-**文件**:
-- `include/nano_redis/string_store.h` (公共 API)
-- `src/string_store.cc` (实现)
-
-**职责**:
-- 基于 flat_hash_map 的键值存储
-- 字符串键值对管理
-- 提供与 unordered_map 对比的基类
-
-**接口**:
-```cpp
-class StringStore {
- public:
-  StringStore();
-  ~StringStore();
-  
-  // 插入操作
-  bool Put(const std::string& key, const std::string& value);
-  bool Put(std::string&& key, std::string&& value);
-  
-  // 查找操作
-  bool Get(const std::string& key, std::string* value) const;
-  std::string* GetMutable(const std::string& key);
-  
-  // 删除操作
-  bool Delete(const std::string& key);
-  
-  // 查询操作
-  bool Contains(const std::string& key) const;
-  
-  // 状态操作
-  size_t Size() const;
-  bool Empty() const;
-  void Clear();
-  
-  // 内存统计
-  size_t MemoryUsage() const;
-  const StringMap& GetStore() const;
-  
- private:
-  using StringMap = absl::flat_hash_map<std::string, std::string>;
-  StringMap store_;
-};
-```
-
-### StdStringStore 模块
-
-**职责**:
-- 基于 unordered_map 的对比实现
-- 与 StringStore 保持相同接口
-
-**接口**:
-```cpp
-class StdStringStore {
- public:
-  // 与 StringStore 完全相同的接口
-  
- private:
-  using StringMap = std::unordered_map<std::string, std::string>;
-  StringMap store_;
-};
-```
-
-## Swiss Table 内存布局
-
-### 完整结构
+## flat_hash_map (Swiss Table) 内存布局
 
 ```
-flat_hash_map 内存布局：
+┌───────────────────────────────────────────────────────────────────┐
+│ flat_hash_map 内部结构                                             │
+├───────────────────────────────────────────────────────────────────┤
+│ Control Array │ Metadata  │   Entry 0    │   Entry 1   │ ...   │
+│ [Ctrl0...Ctrl15] [hashes] [key0,val0] [key1,val1] ...          │
+└───────────────────────────────────────────────────────────────────┘
+  Group 0 (16 bytes)
 
-┌─────────────────────────────────────────────────────────────────┐
-│ Control Array                                                   │
-│ [ctrl0][ctrl1][ctrl2]...[ctrlN]                                 │
-│  1B      1B      1B       1B                                     │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ Entry Array                                                      │
-│ [Entry0][Entry1][Entry2]...[EntryN]                             │
-│  64B     64B     64B      64B                                    │
-└─────────────────────────────────────────────────────────────────┘
+Control Byte 结构：
+┌─────────────────────────────────────────┐
+│ 7 6 5 4 3 2 1 0  (bit)               │
+│ └─────┬──────┘  (H2 hash, 7 bits)    │
+│       │                               │
+│     MSB (特殊标志位)                   │
+│     0: Full slot                       │
+│     1: Empty/Deleted/Sentinel          │
+└─────────────────────────────────────────┘
 
-每个 Entry:
-┌─────────────────────────────────────────────┐
-│ std::string key  │ std::string value        │
-│ [size][cap][ptr] │ [size][cap][ptr]         │
-└─────────────────────────────────────────────┘
-      24-32 bytes          24-32 bytes
+特殊值：
+- kEmpty = 0x80 (10000000)  - 空槽
+- kDeleted = 0xFE (11111110) - 已删除
+- kSentinel = 0xFF (11111111) - 哨兵位
 ```
 
-### Control Byte Group (16 bytes)
+## 查找流程
 
 ```
-┌─────────────────────────────────────┐
-│ c0 │ c1 │ c2 │ ... │ c15           │
-│ 1B │ 1B │ 1B │     │ 1B            │
-└─────────────────────────────────────┘
-       Group 0 (aligned to 16 bytes)
-
-控制字节编码:
-  0x80 (128): 空槽 (kEmpty)
-  0xFE (254): 已删除 (kDeleted)
-  0xFF (255): 哨兵位 (kSentinel)
-  0x00-0x7F:  元素的 H2 hash 值 (7 bits)
+查找 key:
+  1. hash = std::hash(key)
+  2. H1 = hash >> 7  (用于 bucket 选择)
+  3. H2 = hash & 0x7F  (用于 SIMD 匹配)
+  4. bucket = H1 % table_size
+  5. group_start = (bucket / 16) * 16
+  6. 使用 SIMD 比较 group_start 附近的 16 个 control bytes
+  7. 找到匹配的 H2 值
+  8. 完整比较 key
+  9. 返回 value 或继续探测
 ```
 
-### 查找流程图
+## SIMD 探测流程
 
 ```
-查找 key = "hello"
+┌─────────────────────────────────────────┐
+│ SIMD 探测（16 个槽同时比较）            │
+├─────────────────────────────────────────┤
+│ 加载 16 个 control bytes:               │
+│   [0x80, 0x3A, 0x80, 0x5B, ...]        │
+│                                          │
+│ 设置目标值（H2）:                       │
+│   [0x3A, 0x3A, 0x3A, 0x3A, ...]        │
+│                                          │
+│ 比较向量:                                │
+│   [0, 1, 0, 0, ...]                    │
+│     ↑                                   │
+│   找到匹配                              │
+└─────────────────────────────────────────┘
 
-1. 计算 hash
-   hash = std::hash<string>("hello") = 0x12345678
-   h1 = 0x12345678 >> 7  (用于 bucket 选择)
-   h2 = 0x12345678 & 0x7F (用于 SIMD 匹配)
+提取匹配掩码:
+  mask = _mm_movemask_epi8(cmp)
+  // mask 的每个 bit 对应一个槽
 
-2. 定位 control group
-   bucket = h1 % table_size
-   group_start = (bucket / 16) * 16
-
-3. SIMD 探测
-   ┌──────────────────────────────────────┐
-   │ 0x12 0x80 0x00 0x78 ...              │
-   │  ↑                           ↑        │
-   │ h2=0x78 匹配                        │
-   └──────────────────────────────────────┘
-   
-   _mm_cmpeq_epi8(group, 0x78) → mask = 0b1000...
-   
-4. 提取匹配索引
-   idx = __builtin_ctz(mask) → 找到匹配的索引
-   
-5. 完整比较 key
-   if (entries_[idx].key == "hello") {
-     return &entries_[idx].value;
-   }
-```
-
-## 对比：flat_hash_map vs unordered_map
-
-### 内存布局对比
-
-```
-flat_hash_map (open addressing):
-┌─────────────────────────────────────┐
-│ [Entry0][Entry1][Entry2]...         │
-│ 连续存储，缓存友好                  │
-└─────────────────────────────────────┘
-
-unordered_map (chaining):
-┌─────────────────────────────────────┐
-│ bucket[0] → node → node → null     │
-│ bucket[1] → node → null            │
-│ bucket[2] → node → node → node     │
-│ 链表分散，缓存不友好                │
-└─────────────────────────────────────┘
-```
-
-### 性能特征对比
-
-| 特性 | flat_hash_map | unordered_map |
-|------|--------------|---------------|
-| **插入** | O(1) 平均 | O(1) 平均 |
-| **查找** | O(1) 平均 | O(1) 平均 |
-| **删除** | O(1) 平均 + 标记清理 | O(1) 平均 |
-| **遍历** | O(n) 连续 | O(n) 跳跃 |
-| **Cache miss** | ~10% (连续内存) | ~50% (链表跳转) |
-| **内存占用** | 较低 (无指针) | 较高 (链表节点) |
-
-## 依赖关系
-
-```
-string_store.h ───────┐
-                     ├────> hash_table_bench.cc
-string_store.cc ──────┘
-
-string_store.h ──────────> (Abseil::flat_hash_map)
-```
-
-## 数据流
-
-### 插入流程
-
-```
-Client Code
-      │
-      │ store.Put("key", "value")
-      ▼
-hash(key) → H1, H2
-      │
-      ▼
-查找是否存在
-      │
-      ├─ Yes → 更新 value
-      └─ No  → 查找空槽
-               │
-               ├─ SIMD 探测 control bytes
-               ├─ 找到空槽 (kEmpty 或 kDeleted)
-               └─ 插入 Entry
-                      │
-                      ├─ 设置 control byte = H2
-                      └─ 存储 key, value
-```
-
-### 查找流程
-
-```
-Client Code
-      │
-      │ store.Get("key", &value)
-      ▼
-hash(key) → H1, H2
-      │
-      ▼
-定位 control group
-      │
-      ▼
-SIMD 探测
-      │
-      ├─ _mm_cmpeq_epi8(group, H2)
-      ├─ 提取匹配 mask
-      └─ 遍历匹配索引
-               │
-               ├─ 完整比较 key
-               ├─ 匹配 → 返回 value
-               └─ 不匹配 → 继续探测
-```
-
-### 删除流程
-
-```
-Client Code
-      │
-      │ store.Delete("key")
-      ▼
-hash(key) → H1, H2
-      │
-      ▼
-查找 Entry
-      │
-      ├─ 找到 → 标记 control byte = kDeleted
-      └─ 未找到 → 返回 false
-```
-
-## 性能特征
-
-### 时间复杂度
-
-| 操作 | flat_hash_map | unordered_map | 差异 |
-|------|--------------|---------------|------|
-| 插入 | O(1) 平均 | O(1) 平均 | 相同 |
-| 查找 | O(1) 平均 | O(1) 平均 | 相同 |
-| 删除 | O(1) 平均 | O(1) 平均 | 相同 |
-| 遍历 | O(n) | O(n) | 相同 |
-
-### 实际性能（预期）
-
-| 操作 | flat_hash_map | unordered_map | 提升 |
-|------|--------------|---------------|------|
-| Insert 100K | 120ms | 280ms | 2.3x |
-| Lookup 100K | 80ms | 150ms | 1.9x |
-| Delete 100K | 150ms | 200ms | 1.3x |
-| Iterate 100K | 10ms | 12ms | 1.2x |
-
-### 空间复杂度
-
-| 元素数 | flat_hash_map | unordered_map | 差异 |
-|--------|--------------|---------------|------|
-| 1K | ~64KB | ~96KB | -33% |
-| 10K | ~640KB | ~960KB | -33% |
-| 100K | ~6.4MB | ~9.6MB | -33% |
-| 1M | ~64MB | ~96MB | -33% |
-
-## 扩展点
-
-### 后续优化方向
-
-1. **自定义分配器**
-   ```cpp
-   using StringMap = absl::flat_hash_map<
-     std::string,
-     std::string,
-     absl::Hash<std::string>,
-     std::equal_to<std::string>,
-     ArenaAllocator<std::pair<const std::string, std::string>>
-   >;
-   ```
-
-2. **异构查找**
-   ```cpp
-   // 使用 string_view 避免临时 string
-   template<typename K>
-   std::string* Get(const K& key);
-   ```
-
-3. **内存池集成**
-   ```cpp
-   class StringStore {
-     Arena arena_;
-     // Entry 从 arena 分配
-   };
-   ```
-
-4. **批量操作**
-   ```cpp
-   void PutBatch(const std::vector<std::pair<std::string, std::string>>& items);
-   ```
-
-## 内存安全
-
-### 潜在问题及防护
-
-1. **迭代器失效**
-   - rehash 时所有迭代器失效
-   - **防护**: 文档警告，避免长期持有迭代器
-
-2. **删除标记堆积**
-   - 频繁删除会留下大量 kDeleted 标记
-   - **防护**: 自动清理机制（当 deleted > size/4 时 rehash）
-
-3. **哈希碰撞攻击**
-   - 恶意构造的 key 导致性能退化
-   - **防护**: 使用 SipHash 或随机化哈希种子
-
-### 调试支持
-
-```cpp
-#ifdef DEBUG
-  void PrintDebugInfo() const {
-    std::cout << "Size: " << store_.size() << "\n";
-    std::cout << "Capacity: " << store_.capacity() << "\n";
-    std::cout << "Load factor: " << LoadFactor() << "\n";
+遍历匹配的槽:
+  while (mask) {
+    idx = __builtin_ctz(mask)  // 最低位索引
+    if (CheckFullMatch(idx, key)) {
+      return &entries_[idx];
+    }
+    mask &= mask - 1  // 清除最低位
   }
-  
-  double LoadFactor() const {
-    return static_cast<double>(store_.size()) / store_.capacity();
-  }
-#endif
 ```
+
+## StringStore 架构
+
+```
+┌─────────────────────────────────────────┐
+│ StringStore                             │
+├─────────────────────────────────────────┤
+│ flat_hash_map<                      │
+│   std::string,  // key                │
+│   std::string   // value              │
+│ > store_;                              │
+└─────────────────────────────────────────┘
+
+操作流程：
+
+Put(key, value):
+  1. 计算哈希
+  2. 查找 bucket
+  3. 如果存在，更新 value
+  4. 如果不存在，插入新 entry
+  5. 可能触发 rehash
+
+Get(key, value):
+  1. 计算哈希
+  2. 查找 bucket
+  3. SIMD 探测
+  4. 完整比较 key
+  5. 返回 value
+```
+
+---
+
+# Commit 4: 字符串处理 - std::string 高效使用
+
+## std::string 内部结构
+
+### GCC/Clang 实现
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ std::string 内部结构（简化）                                  │
+├─────────────────────────────────────────────────────────────┤
+│ union {                                                     │
+│   // 长字符串模式（堆分配）                                  │
+│   struct LongData {                                         │
+│     char* ptr;        // 指向堆内存 (8 bytes)               │
+│     size_t size;      // 字符串长度 (8 bytes)                │
+│     size_t capacity;  // 容量 (8 bytes)                      │
+│   } long_;                                                  │
+│                                                             │
+│   // 短字符串模式（SSO）                                    │
+│   struct ShortData {                                        │
+│     char data[16];    // 内联缓冲区 (16 bytes)              │
+│     unsigned char size; // 字符串长度 (1 byte, MSB=0 表示SSO) │
+│   } short_;                                                 │
+│ };                                                          │
+└─────────────────────────────────────────────────────────────┘
+
+判断模式：
+  is_short() = (short_.size & 0x80) == 0
+```
+
+### SSO 内存布局
+
+```
+短字符串（SSO, ≤15 字节）：
+┌────────────────────────────────────────────────────┐
+│ [15 字节字符数据] [1 字节长度 MSB=0]              │
+│  data[0..14]      size (bit 0-6)                │
+└────────────────────────────────────────────────────┘
+  总大小：16 字节（栈上分配）
+
+长字符串（>15 字节）：
+┌────────────────────────────────────────────────────┐
+│ [堆指针]     [8 字节长度]   [8 字节容量]          │
+│  long_.ptr    long_.size    long_.capacity       │
+└────────────────────────────────────────────────────┘
+  总大小：24 字节（栈上）+ 堆内存
+
+堆内存：
+┌────────────────────────────────────────────────────┐
+│ [实际字符数据...]                                 │
+└────────────────────────────────────────────────────┘
+```
+
+## StringUtils 架构
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ StringUtils 类（静态方法）                              │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│ ┌───────────────────────────────────────────────────┐ │
+│ │ 查询操作（零拷贝）                                 │ │
+│ │ - StartsWithIgnoreCase(s, prefix)                  │ │
+│ │ - EndsWithIgnoreCase(s, suffix)                    │ │
+│ │ - CompareIgnoreCase(a, b)                          │ │
+│ │ - FindIgnoreCase(haystack, needle)                │ │
+│ └───────────────────────────────────────────────────┘ │
+│                                                         │
+│ ┌───────────────────────────────────────────────────┐ │
+│ │ 转换操作                                             │ │
+│ │ - ToLower(s)           // 原地修改                │ │
+│ │ - ToLowerCopy(s)       // 返回新字符串（move）     │ │
+│ │ - ToUpper(s)           // 原地修改                │ │
+│ │ - ToUpperCopy(s)       // 返回新字符串（move）     │ │
+│ └───────────────────────────────────────────────────┘ │
+│                                                         │
+│ ┌───────────────────────────────────────────────────┐ │
+│ │ 修剪操作（原地修改）                                 │ │
+│ │ - TrimLeft(s)                                     │ │
+│ │ - TrimRight(s)                                    │ │
+│ │ - Trim(s)                                         │ │
+│ └───────────────────────────────────────────────────┘ │
+│                                                         │
+│ ┌───────────────────────────────────────────────────┐ │
+│ │ 分割和连接（预分配优化）                             │ │
+│ │ - Split(s, delim)      // 预估大小，避免重新分配    │ │
+│ │ - Join(parts, delim)   // 预计算总大小              │ │
+│ │ - Concat(parts)        // 使用 append              │ │
+│ └───────────────────────────────────────────────────┘ │
+│                                                         │
+│ ┌───────────────────────────────────────────────────┐ │
+│ │ 转义操作                                             │ │
+│ │ - Escape(s)            // 转义特殊字符              │ │
+│ │ - Unescape(s)          // 反转义                    │ │
+│ └───────────────────────────────────────────────────┘ │
+│                                                         │
+│ ┌───────────────────────────────────────────────────┐ │
+│ │ 类型转换                                             │ │
+│ │ - IntToString(value, base)  // 支持不同进制        │ │
+│ │ - StringToInt(s, *value)   // 安全解析            │ │
+│ └───────────────────────────────────────────────────┘ │
+│                                                         │
+│ ┌───────────────────────────────────────────────────┐ │
+│ │ SSO 工具                                             │ │
+│ │ - SSOThreshold()          // 获取 SSO 阈值          │ │
+│ │ - IsSSO(s)                // 检查是否使用 SSO      │ │
+│ └───────────────────────────────────────────────────┘ │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+## 关键操作流程
+
+### ToLower 原地修改
+
+```
+ToLower(s):
+  for each char in s:
+    if char is uppercase (A-Z):
+      char = char + 32  // 转换为小写
+    else:
+      unchanged
+
+优势：
+  - 无额外内存分配
+  - 原地修改，速度快
+```
+
+### ToLowerCopy 返回新字符串
+
+```
+ToLowerCopy(s):
+  // 参数按值传递（可能的拷贝）
+  result = s
+  for each char in result:
+    if char is uppercase (A-Z):
+      char = char + 32
+  return result  // RVO 优化
+
+优势：
+  - 调用者可以保留原始字符串
+  - 使用 RVO 避免拷贝
+```
+
+### Split 分割
+
+```
+Split(s, delim):
+  1. 预估结果大小：count = count(delim) + 1
+  2. result.reserve(count)  // 预分配
+  3. 遍历字符串：
+       - 找到 delim 位置
+       - substr(start, pos - start)
+       - push_back(result)  // RVO
+  4. 添加最后一个部分
+  5. return result  // RVO
+
+优化：
+  - 预分配避免多次重新分配
+  - substr 对于小字符串使用 SSO
+  - RVO 避免返回值拷贝
+```
+
+### Join 连接
+
+```
+Join(parts, delim):
+  1. 预计算总大小：
+       total = sum(part.size()) + delim.size() * (parts.size() - 1)
+  2. result.reserve(total)  // 一次性分配
+  3. 遍历 parts：
+       - if i > 0: result += delim
+       - result += parts[i]  // 直接追加
+  4. return result  // RVO
+
+优化：
+  - 预计算总大小，一次性分配
+  - 避免多次重新分配
+  - 使用 += 比 append 快
+```
+
+### Concat 拼接
+
+```
+Concat(parts):
+  1. 预计算总大小：total = sum(part.size())
+  2. result.reserve(total)  // 一次性分配
+  3. for part in parts:
+       result.append(part)  // 使用 append 比 += 稍快
+  4. return result  // RVO
+
+优化：
+  - 预分配内存
+  - 使用 append（避免额外检查）
+  - RVO 避免拷贝
+```
+
+## 字符串拷贝优化示例
+
+### 场景 1：值传递 vs 引用传递
+
+```
+❌ 低效：值传递（拷贝）
+void Process(std::string s) {
+  // s 是拷贝，触发堆分配（如果长字符串）
+}
+
+✅ 高效：引用传递（无拷贝）
+void Process(const std::string& s) {
+  // s 是引用，无拷贝
+}
+
+性能差异：
+  - 短字符串（SSO）：~5ns vs ~0ns
+  - 长字符串（堆）：~100ns vs ~0ns
+```
+
+### 场景 2：使用 std::move
+
+```
+❌ 低效：拷贝赋值
+std::string src = "Hello, World!";
+std::string dest;
+dest = src;  // 深拷贝，~100ns
+
+✅ 高效：移动赋值
+std::string src = "Hello, World!";
+std::string dest;
+dest = std::move(src);  // 转移所有权，~5ns
+
+性能差异：
+  - 短字符串（SSO）：~5ns vs ~5ns（相同）
+  - 长字符串（堆）：~5ns vs ~100ns（20x）
+```
+
+### 场景 3：避免临时字符串
+
+```
+❌ 低效：创建临时字符串
+std::string result;
+for (const auto& item : items) {
+  result += "[" + item + "]";  // 创建临时字符串
+}
+
+✅ 高效：直接追加
+std::string result;
+result.reserve(items.size() * 20);  // 预分配
+for (const auto& item : items) {
+  result += "[";
+  result += item;
+  result += "]";  // 无临时字符串
+}
+
+性能差异：
+  - 100 次循环：~250ms vs ~50ms（5x）
+```
+
+## 内存使用对比
+
+### 场景：存储 100K 字符串
+
+```
+小字符串（平均 8 字符）：
+  ┌────────────────────────────────────────┐
+  │ SSO 模式（栈上）                       │
+  │ - 每个 string: 16 bytes               │
+  │ - 总内存: 1.6 MB                      │
+  │ - 缓存友好: L1 cache                  │
+  └────────────────────────────────────────┘
+
+  ┌────────────────────────────────────────┐
+  │ 堆分配模式                            │
+  │ - 每个 string: 24 bytes (栈) + 8 bytes (堆) │
+  │ - 总内存: 3.2 MB (栈) + 0.8 MB (堆)   │
+  │ - 缓存不友好: L2/L3 cache            │
+  └────────────────────────────────────────┘
+
+  节省：50% 内存
+
+大字符串（平均 100 字符）：
+  ┌────────────────────────────────────────┐
+  │ 堆分配模式                            │
+  │ - 每个 string: 24 bytes (栈) + 100 bytes (堆) │
+  │ - 总内存: 2.4 MB (栈) + 10 MB (堆)    │
+  │ - SSO 不适用                          │
+  └────────────────────────────────────────┘
+
+  节省：0%（SSO 不适用）
+```
+
+## 性能优化总结
+
+```
+优化技术                    | 提升倍数 | 适用场景
+----------------------------|---------|----------
+SSO（小字符串）             | 20x     | ≤15 字符
+std::move（长字符串）       | 20x     | >15 字符
+const& 引用传递             | ∞       | 只读参数
+reserve 预分配             | 2-5x    | 已知大小
+Split/Join 预分配           | 2.5x    | 分割/连接操作
+避免临时字符串              | 5x      | 循环拼接
+RVO/NRVO 返回值优化        | ∞       | 函数返回
