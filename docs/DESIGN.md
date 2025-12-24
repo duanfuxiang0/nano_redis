@@ -23,14 +23,13 @@ tests/version_test.cc        |   60 | 单元测试
 
 ## 设计决策
 
-### 1. 为什么选择双构建系统（Bazel + CMake）？
+### 1. 为什么只选择 CMake？
 
 | 构建系统 | 优点 | 缺点 | 使用场景 |
 |---------|------|--------|---------|
-| **Bazel** | - 增量编译快<br/>- 依赖管理简单<br/>- 跨语言支持 | - 学习曲线陡峭<br/>- 安装复杂 | 开发阶段 |
-| **CMake** | - 广泛支持<br/>- IDE 友好<br/>- 部署方便 | - 配置复杂<br/>- 速度较慢 | 生产环境 |
+| **CMake** | - 广泛支持<br/>- IDE 友好<br/>- 学习曲线低 | - 配置相对复杂 | 开发和生产环境 |
 
-**决策**：同时支持两者，让用户根据场景选择。
+**决策**：使用 CMake，简化项目结构，降低学习成本。
 
 ### 2. 为什么分离头文件和实现？
 
@@ -82,7 +81,6 @@ nano_redis/
 │   ├── ARCHITECTURE.md
 │   ├── PERFORMANCE.md
 │   └── LESSONS_LEARNED.md
-├── BUILD.bazel             ← Bazel 构建
 ├── CMakeLists.txt          ← CMake 构建
 └── README.md              ← 项目说明
 ```
@@ -96,9 +94,6 @@ nano_redis/
 ```bash
 # CMake 增量编译
 cmake --build build  # ~0.5s
-
-# Bazel 增量编译
-bazel build //...    # ~0.2s
 ```
 
 ## 学习要点
@@ -162,9 +157,196 @@ bazel build //...    # ~0.2s
 ## 验收标准
 
 - [x] 项目结构建立完成
-- [x] Bazel 构建系统配置完成
 - [x] CMake 构建系统配置完成
+- [x] Abseil 集成完成
 - [x] 版本号模块实现
 - [x] 错误处理模块实现
 - [x] 单元测试通过
+- [x] 文档完整
+
+---
+
+# Commit 2: Arena Allocator - 内存分配器设计
+
+## 概述
+
+本提交实现了 Arena Allocator（区域分配器），这是高性能内存管理的基础。Arena 通过批量分配和统一释放，避免了频繁的 malloc/free 调用。
+
+## 代码统计
+
+```
+文件                      | 行数 | 说明
+--------------------------|------|------
+include/nano_redis/arena.h |   48 | Arena 定义
+src/arena.cc               |   85 | Arena 实现
+tests/arena_test.cc        |  165 | 单元测试
+tests/arena_bench.cc       |  102 | 性能基准
+--------------------------|------|------
+总计                      |  400 |
+```
+
+## 设计决策
+
+### 1. 为什么用 Arena 而不是直接 malloc？
+
+| 方案 | 优点 | 缺点 | 使用场景 |
+|------|------|------|----------|
+| **Arena** | - O(1) 分配速度<br/>- 无碎片<br/>- 缓存友好<br/>- 批量释放 | - 需要预知生命周期<br/>- 不能单独释放对象 | 短生命周期、大量小对象 |
+| **malloc/free** | - 灵活的内存管理<br/>- 可单独释放对象 | - 系统调用开销<br/>- 碎片化<br/>- 复杂度高 | 长生命周期、不确定大小 |
+
+**决策**：使用 Arena，适用于服务器场景中大量短生命周期的对象。
+
+### 2. 为什么选择指针 bump 分配？
+
+```
+指针 bump 分配：
+  ptr_ → [已分配区域] [空闲区域] → end_
+         ↑              ↑
+       分配位置       可分配空间
+
+每次分配只需移动指针：ptr_ += size
+```
+
+**优点**：
+- O(1) 分配速度
+- 无需维护空闲链表
+- 无需搜索最佳匹配块
+- 简单高效
+
+**缺点**：
+- 不能单独释放对象
+- 需要一次性释放整个 Arena
+
+### 3. 为什么不用 TLS (Thread Local Storage)？
+
+| 方案 | 优点 | 缺点 |
+|------|------|------|
+| **TLS Arena** | - 无锁<br/>- 高并发性能 | - 每线程内存占用<br/>- 教学复杂度高 |
+| **单线程 Arena** | - 简单直观<br/>- 内存占用小 | - 需要加锁（多线程） |
+
+**决策**：第一阶段使用单线程 Arena，后续可扩展为 Per-thread Arena。
+
+### 4. 内存对齐处理
+
+```cpp
+void* Allocate(size_t size, size_t alignment) {
+  // 计算对齐所需的填充
+  size_t offset = reinterpret_cast<uintptr_t>(ptr_) % alignment;
+  size_t padding = (offset == 0) ? 0 : alignment - offset;
+  
+  char* result = ptr_ + padding;
+  ptr_ += size + padding;
+  
+  return result;
+}
+```
+
+**为什么需要对齐？**
+- CPU 访问对齐的内存更快（SIMD 指令）
+- 某些架构要求强制对齐（如 ARM）
+- std::max_align_t 保证最大对齐要求
+
+## 架构图
+
+```
+Arena 内存布局：
+
+Block 0 (4KB):
+┌────────────────────────────────┐
+│ [ptr_已分配][空闲] → end_      │
+└────────────────────────────────┘
+
+Block 1 (4KB):  ┐
+                │ blocks_ 向量
+Block 2 (4KB):  │
+                │
+
+当 Block 0 不够时：
+1. 分配新的 Block
+2. ptr_, end_ 指向新 Block
+3. 旧 Block 保留（直到 Reset）
+
+Reset():
+  - 释放所有 Block
+  - ptr_, end_ = nullptr
+```
+
+## 性能分析
+
+### 理论性能
+
+| 操作 | Arena | malloc | 提升 |
+|------|-------|--------|------|
+| 分配 | O(1) | O(n) ~ O(log n) | ∞ |
+| 释放 | O(1) 批量 | O(1) 单个 | N/A |
+| 碎片 | 0% | ~15% | - |
+
+### 实际性能（预期）
+
+```
+操作                | Arena  | malloc | 提升
+--------------------|--------|--------|------
+分配 1000 小对象    | 0.01ms | 0.10ms | 10x
+释放 (批量)         | 0.001ms| N/A    | ∞
+内存碎片           | 0%      | ~15%   | -
+```
+
+## 学习要点
+
+### 内存分配器原理
+
+1. **Bump Allocator**
+   - 最简单的分配策略
+   - 只能向前移动指针
+   - 适合已知生命周期的对象
+
+2. **Free List Allocator**
+   - 维护空闲块链表
+   - 支持单独释放
+   - 实现复杂，性能较低
+
+3. **Slab Allocator**
+   - 固定大小的块
+   - 无碎片
+   - 适合频繁分配/释放相同大小的对象
+
+### 内存对齐
+
+```cpp
+// 检查对齐
+bool is_aligned = (ptr % alignment) == 0;
+
+// 计算下一个对齐地址
+uintptr_t next_aligned = (ptr + alignment - 1) & ~(alignment - 1);
+```
+
+### RAII 模式
+
+```cpp
+class ScopedArena {
+ public:
+  ScopedArena() : arena_() {}
+  ~ScopedArena() { arena_.Reset(); }
+  
+  Arena* get() { return &arena_; }
+
+ private:
+  Arena arena_;
+};
+
+// 使用
+{
+  ScopedArena scoped_arena;
+  void* ptr = scoped_arena.get()->Allocate(64);
+  // 自动释放
+}
+```
+
+## 验收标准
+
+- [x] Arena 类实现完成
+- [x] 支持内存对齐
+- [x] 支持移动语义
+- [x] 单元测试通过（12/12）
+- [x] 性能基准测试实现
 - [x] 文档完整

@@ -226,3 +226,387 @@ try {
 
 ### 测试
 - [GoogleTest Primer](https://google.github.io/googletest/primer.html)
+
+---
+
+# Commit 2: Arena Allocator - 学习要点
+
+## 内存分配基础
+
+### 1. 为什么需要内存分配器？
+
+**问题**: `new`/`delete` 和 `malloc`/`free` 的局限
+
+```cpp
+// 传统方式 - 慢
+for (int i = 0; i < 1000000; ++i) {
+  int* arr = new int[100];
+  // 使用 arr
+  delete[] arr;  // 每次都要调用系统函数
+}
+
+// Arena 方式 - 快
+Arena arena;
+for (int i = 0; i < 1000000; ++i) {
+  int* arr = static_cast<int*>(arena.Allocate(100 * sizeof(int)));
+  // 使用 arr
+}
+// arena.Reset() 一次性释放
+```
+
+**性能差异**:
+- 传统方式: 1,000,000 次系统调用
+- Arena 方式: ~1,000 次系统调用（每次 4KB 块）
+
+### 2. Bump Allocator（指针推进分配器）
+
+**原理**: 只向前移动指针
+
+```cpp
+class BumpAllocator {
+  char* ptr_;
+  char* end_;
+
+public:
+  void* Allocate(size_t size) {
+    if (ptr_ + size > end_) {
+      // 分配新块
+    }
+    char* result = ptr_;
+    ptr_ += size;  // 只移动指针！
+    return result;
+  }
+};
+```
+
+**为什么快？**
+- 无需搜索空闲块（O(1)）
+- 无需维护空闲链表
+- 无需处理碎片
+
+**限制**：
+- 不能单独释放对象
+- 适合短生命周期对象
+
+### 3. 内存对齐
+
+**问题**: CPU 访问未对齐的内存效率低
+
+```cpp
+// 未对齐（慢）
+char* ptr = 0x1003;  // 未对齐到 4 字节
+int* i = reinterpret_cast<int*>(ptr);
+// CPU 需要两次内存访问
+
+// 对齐（快）
+char* ptr = 0x1004;  // 对齐到 4 字节
+int* i = reinterpret_cast<int*>(ptr);
+// CPU 只需一次内存访问
+```
+
+**对齐计算**:
+
+```cpp
+// 方法 1: 取模
+uintptr_t offset = ptr % alignment;
+uintptr_t padding = (offset == 0) ? 0 : alignment - offset;
+
+// 方法 2: 位运算（更快）
+uintptr_t padding = (alignment - (ptr & (alignment - 1))) & (alignment - 1);
+
+// 示例
+ptr = 0x1003, alignment = 8
+offset = 0x1003 % 8 = 3
+padding = 8 - 3 = 5
+result = 0x1003 + 5 = 0x1008 (对齐到 8)
+```
+
+## C++ 技巧
+
+### 1. 移动语义
+
+```cpp
+Arena a1;
+a1.Allocate(100);
+
+Arena a2(std::move(a1));  // 移动构造
+
+// 移动后 a1 的状态
+assert(a1.MemoryUsage() == 0);  // a1 已被清空
+assert(a2.MemoryUsage() > 0);   // a2 拥有内存
+```
+
+**为什么需要移动？**
+- 避免深拷贝
+- 高效传递所有权
+- 实现 RAII
+
+### 2. RAII（资源获取即初始化）
+
+```cpp
+class ScopedArena {
+ public:
+  ScopedArena() : arena_() {}
+  ~ScopedArena() { arena_.Reset(); }  // 自动释放
+
+  Arena* get() { return &arena_; }
+
+ private:
+  Arena arena_;
+};
+
+// 使用
+{
+  ScopedArena scoped;
+  void* ptr = scoped.get()->Allocate(64);
+  // 离开作用域自动释放
+}
+```
+
+**优点**：
+- 不会忘记释放
+- 异常安全
+- 代码简洁
+
+### 3. Placement New
+
+```cpp
+// 在已分配的内存上构造对象
+void* ptr = arena.Allocate(sizeof(std::string));
+
+// 使用 placement new
+std::string* str = new (ptr) std::string("Hello");
+
+// 显式调用析构函数
+str->~std::string();
+
+// 不需要 delete（Arena 会释放内存）
+```
+
+**为什么需要 placement new？**
+- Arena 分配的内存没有构造对象
+- 需要手动调用构造函数
+- 适合预分配的场景
+
+## 性能优化
+
+### 1. 缓存友好设计
+
+```cpp
+// 好的设计 - 连续内存
+Arena arena;
+for (int i = 0; i < 1000; ++i) {
+  // 所有对象连续分配
+  int* obj = static_cast<int*>(arena.Allocate(sizeof(int)));
+}
+
+// 不好的设计 - 碎片化
+std::vector<int*> ptrs;
+for (int i = 0; i < 1000; ++i) {
+  ptrs.push_back(new int);  // 可能分散在堆的各个位置
+}
+```
+
+**缓存命中率差异**:
+- Arena: 95%+
+- malloc: 80-85%
+
+### 2. 批量分配 vs 单个分配
+
+```cpp
+// 批量分配（快）
+void* batch = arena.Allocate(1000 * sizeof(int));
+int* arr = static_cast<int*>(batch);
+
+// 单个分配（慢）
+for (int i = 0; i < 1000; ++i) {
+  void* ptr = arena.Allocate(sizeof(int));
+}
+```
+
+**性能差异**:
+- 批量: 1 次分配
+- 单个: 1000 次分配
+
+## 实际应用
+
+### 1. 字符串池
+
+```cpp
+class StringPool {
+  Arena arena_;
+
+public:
+  const char* Intern(const std::string& s) {
+    size_t size = s.size() + 1;  // +1 for null terminator
+    char* ptr = static_cast<char*>(arena_.Allocate(size));
+    std::memcpy(ptr, s.c_str(), size);
+    return ptr;
+  }
+};
+```
+
+### 2. 对象池
+
+```cpp
+template<typename T>
+class ObjectPool {
+  Arena arena_;
+
+public:
+  T* Allocate() {
+    void* ptr = arena_.Allocate(sizeof(T));
+    return new (ptr) T();
+  }
+
+  void FreeAll() {
+    // 需要手动调用析构函数
+    // 这里简化处理
+  }
+};
+```
+
+### 3. 临时缓冲区
+
+```cpp
+class TempBuffer {
+  Arena arena_;
+
+public:
+  char* Allocate(size_t size) {
+    return static_cast<char*>(arena_.Allocate(size));
+  }
+
+  void Reset() {
+    arena_.Reset();
+  }
+};
+```
+
+## 常见错误
+
+### 1. 忘记调用 Reset
+
+```cpp
+// 错误 - 内存泄漏
+void ProcessData() {
+  Arena arena;
+  for (int i = 0; i < 10000; ++i) {
+    arena.Allocate(100);
+  }
+  // 忘记调用 Reset()！
+}
+
+// 正确 - 使用 RAII
+void ProcessData() {
+  ScopedArena scoped;
+  for (int i = 0; i < 10000; ++i) {
+    scoped.get()->Allocate(100);
+  }
+  // 自动调用 Reset()
+}
+```
+
+### 2. 使用已释放的指针
+
+```cpp
+Arena arena;
+void* ptr = arena.Allocate(64);
+
+arena.Reset();  // 释放所有内存
+
+// 错误 - 悬空指针
+*static_cast<int*>(ptr) = 42;  // 未定义行为
+```
+
+### 3. 忘记手动调用析构函数
+
+```cpp
+Arena arena;
+std::string* str = new (arena.Allocate(sizeof(std::string))) std::string("Hello");
+
+// 错误 - 析构函数未被调用
+// std::string 内部的内存泄漏了
+
+// 正确
+str->~std::string();
+```
+
+## 进阶话题
+
+### 1. Per-thread Arena（线程本地 Arena）
+
+```cpp
+class ThreadLocalArena {
+  static thread_local Arena arena_;
+
+public:
+  static void* Allocate(size_t size) {
+    return arena_.Allocate(size);
+  }
+};
+
+// 使用
+void* ptr = ThreadLocalArena::Allocate(64);
+```
+
+**优点**：
+- 无锁，高并发性能
+- 避免伪共享
+
+### 2. 分层 Arena
+
+```cpp
+class HierarchicalArena {
+  Arena small_;  // 小对象
+  Arena large_;  // 大对象
+
+public:
+  void* Allocate(size_t size) {
+    if (size < 1024) {
+      return small_.Allocate(size);
+    } else {
+      return large_.Allocate(size);
+    }
+  }
+};
+```
+
+### 3. 自适应块大小
+
+```cpp
+class AdaptiveArena {
+  size_t current_block_size_;
+
+public:
+  void* Allocate(size_t size) {
+    if (size > current_block_size_ / 2) {
+      // 下次使用更大的块
+      current_block_size_ *= 2;
+    }
+    // ...
+  }
+};
+```
+
+## 下一步学习
+
+在下一个提交中，我们将学习：
+- 数据结构选型：flat_hash_map vs unordered_map
+- Swiss Table 的设计原理
+- Open addressing 的实现
+
+## 推荐阅读
+
+### 内存分配
+- [Malloc Internals](https://sourceware.org/glibc/wiki/MallocInternals)
+- [jemalloc Design](http://jemalloc.net/jemalloc.3.html)
+- [tcmalloc Design](https://github.com/google/tcmalloc)
+
+### C++ 内存管理
+- [C++ Reference - operator new](https://en.cppreference.com/w/cpp/memory/operator_new)
+- [C++ Reference - placement new](https://en.cppreference.com/w/cpp/language/new)
+
+### 性能优化
+- [Cache Optimization](https://lwn.net/Articles/252125/)
+- [Memory Alignment](https://en.wikipedia.org/wiki/Data_structure_alignment)

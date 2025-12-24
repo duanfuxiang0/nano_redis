@@ -1,5 +1,47 @@
 # Nano-Redis 2025 - 完整教程方案
 
+## 🔧 技术栈调整说明（2025-01）
+
+**主要调整**：
+- ✅ C++20 → C++17（提高兼容性）
+- ✅ Bazel + CMake → 仅 CMake（简化构建）
+- ✅ C++20 协程 → 自实现 Task<T>（可控执行模型）
+- ✅ Abseil string_view/Cord → std::string（简化依赖）
+- ✅ Abseil Time → std::chrono（标准库）
+- ✅ Abseil 通过 add_subdirectory 引入（本地目录）
+
+**保留技术**：
+- io_uring（高性能 I/O）
+- Abseil flat_hash_map/flat_hash_set/InlinedVector（高效容器）
+- Arena Allocator（内存优化）
+- Time Wheel（O(1) 定时器）
+
+### Abseil 集成方式
+
+```cmake
+# CMakeLists.txt
+set(ABSL_PROPAGATE_CXX_STD ON)
+
+# 设置 Abseil 路径（可通过环境变量覆盖）
+if(DEFINED ENV{ABSEIL_PATH})
+  set(ABSEIL_ROOT $ENV{ABSEIL_PATH})
+else()
+  set(ABSEIL_ROOT ${CMAKE_SOURCE_DIR}/third_party/abseil-cpp)
+endif()
+
+add_subdirectory(${ABSEIL_ROOT} ${CMAKE_BINARY_DIR}/abseil-cpp EXCLUDE_FROM_ALL)
+
+# 只链接需要的组件
+target_link_libraries(nano_redis
+  PUBLIC
+    absl::flat_hash_map
+    absl::flat_hash_set
+    absl::inlined_vector
+)
+```
+
+---
+
 ## 📊 项目概览
 
 | 指标 | 目标 |
@@ -9,6 +51,9 @@
 | **每个提交** | 200-350 行新增代码 |
 | **学习曲线** | 渐进式，从简单到复杂 |
 | **测试覆盖** | 每个提交都有对应的测试 |
+| **C++标准** | C++17 |
+| **构建系统** | CMake |
+| **异步模型** | 自实现 task<T> |
 
 ---
 
@@ -26,13 +71,14 @@
 - 建立测试框架
 
 **设计决策**:
-1. 为什么选 Bazel + CMake 双构建系统?
-   - Bazel 用于开发（快速、增量）
-   - CMake 用于部署（广泛支持）
+1. 为什么只选 CMake?
+    - 简化项目结构
+    - 广泛支持，易于部署
+    - 学习成本低
 
 2. 目录结构为什么这样设计?
-   - 分离头文件和实现（清晰的接口）
-   - 按功能模块化（易于学习）
+    - 分离头文件和实现（清晰的接口）
+    - 按功能模块化（易于学习）
 
 **文件清单**:
 ```
@@ -40,7 +86,6 @@ include/nano_redis/version.h    # 版本号
 include/nano_redis/status.h     # 错误处理
 src/version.cc                 # 版本实现
 tests/version_test.cc          # 版本测试
-BUILD.bazel                   # Bazel 构建
 CMakeLists.txt                # CMake 构建
 README.md                     # 项目说明
 docs/DESIGN.md               # 设计决策
@@ -52,11 +97,12 @@ docs/LESSONS_LEARNED.md        # 学习要点
 **代码量**: ~180 行
 
 **关键技术点**:
-- `constexpr` 编译期常量
+- `constexpr` 编译期常量（C++11+）
 - `inline` 函数优化
 - `enum class` 强类型枚举
 - GoogleTest 断言
 - Status 错误处理模式
+- CMake 构建系统
 
 **测试**: GET 6/6 PASSED
 
@@ -71,30 +117,31 @@ docs/LESSONS_LEARNED.md        # 学习要点
 
 **设计决策**:
 1. 为什么用 Arena 而不是直接 malloc?
-   - 减少系统调用次数（批量分配）
-   - 缓存局部性（连续内存）
-   - 便于统一释放（避免碎片）
+    - 减少系统调用次数（批量分配）
+    - 缓存局部性（连续内存）
+    - 便于统一释放（避免碎片）
 
 2. 为什么选择指针 bump 分配?
-   - O(1) 分配速度
-   - 无需维护空闲链表
-   - 适合短生命周期对象
+    - O(1) 分配速度
+    - 无需维护空闲链表
+    - 适合短生命周期对象
 
 3. 为什么不用 TLS (Thread Local Storage)?
-   - 教程简化（第一阶段单线程）
-   - 后续可扩展为 Per-thread Arena
+    - 教程简化（第一阶段单线程）
+    - 后续可扩展为 Per-thread Arena
 
 **核心代码结构**:
 ```cpp
 class Arena {
-  void* ptr_;                    // 当前分配位置
-  void* end_;                    // 当前块结束位置
+  char* ptr_;                    // 当前分配位置
+  char* end_;                    // 当前块结束位置
   size_t block_size_;             // 每块大小
   std::vector<void*> blocks_;     // 已分配的块
 
 public:
-  void* Allocate(size_t size, size_t alignment = 8);
+  void* Allocate(size_t size, size_t alignment = alignof(std::max_align_t));
   void Reset();
+  size_t MemoryUsage() const;
 };
 ```
 
@@ -151,10 +198,11 @@ docs/LESSONS_LEARNED.md        # 内存分配知识点
 
 **核心代码结构**:
 ```cpp
-using StringStore = absl::flat_hash_map<std::string, absl::Cord>;
+// 统一使用 std::string
+using StringStore = absl::flat_hash_map<std::string, std::string>;
 
-// 异构查找 - 避免临时 string
-StoredValue* Get(absl::string_view key);
+// 异构查找 - 使用 std::string 作为 key
+StoredValue* Get(const std::string& key);
 ```
 
 **文件清单**:
@@ -195,49 +243,45 @@ Memory      | 64MB        | 96MB          | 1.5x
 
 ---
 
-#### **Commit 4: 字符串处理 - string_view vs string vs Cord**
+#### **Commit 4: 字符串处理 - std::string 高效使用**
 
 **学习目标**:
-- 理解零拷贝字符串处理
-- 学习何时用 string_view，何时用 Cord
-- 对比不同字符串表示的内存开销
+- 理解 std::string 的内部实现（SSO - Small String Optimization）
+- 学习如何避免不必要的字符串拷贝
+- 掌握字符串操作的性能优化技巧
 
 **设计决策**:
-1. 为什么 Key 用 string_view 而不是 string?
-   - 零拷贝的查找（避免临时 string）
-   - flat_hash_map 支持异构查找
+1. 为什么只用 std::string?
+    - C++17 标准库，无需额外依赖
+    - SSO 优化（小字符串栈上分配）
+    - 现代编译器优化（COW -> move semantics）
 
-2. 为什么 Value 用 Cord 而不是 string?
-   - 支持大值（无需大块重分配）
-   - Copy-on-Write（减少拷贝）
-   - O(1) 的 Append/Prepend
+2. 为什么不使用 string_view 或 Cord?
+    - 简化项目复杂度（聚焦核心功能）
+    - std::string 足够高效
+    - 避免生命周期管理问题
 
-3. 什么时候用标准 string?
-   - 小值（< 64 bytes，Cord 的 inline 优化）
-   - 需要修改的场景
+3. 字符串拷贝优化技巧:
+    - 使用 `std::move` 转移所有权
+    - 引用传递 `const std::string&`（只读）
+    - 返回值优化（RVO/NRVO）
 
 **文件清单**:
 ```
 include/nano_redis/string_utils.h    # 字符串工具
 tests/string_bench.cc               # 字符串性能测试
-docs/DESIGN.md                     # 字符串类型对比
-docs/ARCHITECTURE.md                # Cord 内部结构
-docs/PERFORMANCE.md                 # 不同操作的内存/时间开销
-docs/LESSONS_LEARNED.md             # 零拷贝和 COW 知识点
+docs/DESIGN.md                     # std::string 设计
+docs/ARCHITECTURE.md                | SSO 内部结构
+docs/PERFORMANCE.md                 | 性能优化技巧
+docs/LESSONS_LEARNED.md             | 字符串知识点
 ```
 
 **代码量**: ~200 行
 
-**性能对比表**:
+**SSO (Small String Optimization) 示例**:
 ```
-操作                | string | string_view | Cord
---------------------|--------|--------------|------
-查找 key (read)      | 分配   | 0 分配       | 0 分配
-存储 small value     | 1 次分配 | N/A         | inline (0 分配)
-存储 large value     | 1 次分配 | N/A         | 多个 chunk (分块)
-修改                | O(n)   | N/A          | O(k) chunk 数
-追加                | O(n)   | N/A          | O(1)
-拷贝构造             | O(n)   | O(1) view    | O(1) ref++
+std::string s = "short";  // 栈上存储，无堆分配
+std::string l = "a very long string that exceeds SSO threshold";  // 堆分配
 ```
 
 ---
@@ -411,33 +455,83 @@ enum class RespType {
 - 理解命令模式（Command Pattern）
 - 学习如何设计可扩展的命令系统
 - 掌握函数对象和 lambda 的使用
+- 理解自实现 task<T> 异步机制
 
 **设计决策**:
 1. 为什么用命令注册表而不是 if-else?
-   - O(1) 查找时间
-   - 易于扩展（添加新命令不需要改核心逻辑）
-   - 支持动态注册
+    - O(1) 查找时间
+    - 易于扩展（添加新命令不需要改核心逻辑）
+    - 支持动态注册
 
 2. 为什么用 flat_hash_map 存储命令?
-   - 命令数量少（查找不频繁）
-   - 编译时字符串作为 key
-   - 与数据存储一致的体验
+    - 命令数量少（查找不频繁）
+    - 编译时字符串作为 key
+    - 与数据存储一致的体验
 
-3. 为什么用协程作为命令签名?
-   - 统一的异步接口
-   - 为 io_uring 迁移做准备
-   - 支持未来 I/O 阻塞命令
+ 3. 为什么用自实现 task<T> 而不是 C++20 协程?
+     - C++17 兼容性更好
+     - 自实现有助于理解协程原理
+     - 可控的执行模型（非抢占式）
+     - 与 io_uring 配合更灵活
+
+**task<T> 详细设计**:
+
+基于状态机的轻量级协程实现：
+- **Awaitable 接口**：`await_ready()`, `await_suspend()`, `await_resume()`
+- **Promise 状态**：存储中间结果和执行状态
+- **执行器模式**：与 io_uring 配合的事件驱动执行
+
+简化实现（教学版本）：
+```cpp
+// 状态机状态
+enum class TaskState {
+  kPending,
+  kReady,
+  kDone
+};
+
+template<typename T>
+class Task {
+  struct State {
+    TaskState state = TaskState::kPending;
+    T value;
+    std::exception_ptr exception;
+  };
+
+  std::shared_ptr<State> state_;
+
+public:
+  // 简化的 awaitable 接口
+  bool await_ready() const { return state_->state != TaskState::kPending; }
+  void await_suspend(std::coroutine_handle<> handle);
+  T await_resume() { return std::move(state_->value); }
+};
+```
 
 **核心代码结构**:
 ```cpp
-using CommandHandler = task<RespValue>(Database& db, const std::vector<RespValue>& args);
-
-class CommandRegistry {
-  absl::flat_hash_map<absl::string_view, CommandHandler> commands_;
+// 自实现的轻量级 task<T>
+template<typename T>
+class Task {
+  using CoroHandle = void*;  // 简化的协程句柄
+  std::unique_ptr<PromiseState> state_;
 
 public:
-  void Register(absl::string_view name, CommandHandler handler);
-  std::optional<CommandHandler> Get(absl::string_view name);
+  struct promise_type;
+  Task(promise_type* p);
+  bool await_ready();
+  void await_suspend(std::experimental::coroutine_handle<>);
+  T await_resume();
+};
+
+using CommandHandler = Task<RespValue>(Database& db, const std::vector<RespValue>& args);
+
+class CommandRegistry {
+  absl::flat_hash_map<std::string, std::function<Task<RespValue>(Database&, const std::vector<RespValue>&)>> commands_;
+
+public:
+  void Register(const std::string& name, CommandHandler handler);
+  std::function<Task<RespValue>(Database&, const std::vector<RespValue>&)>* Get(const std::string& name);
 };
 ```
 
@@ -474,17 +568,18 @@ docs/LESSONS_LEARNED.md                   # 设计模式知识点
    - StoredValue 包含 value + 元数据（TTL）
    - 直接映射 Redis 的内存模型
 
-3. 为什么用 Cord 存储值?
-   - 支持大值
-   - COW 特性（GET 不会拷贝）
-   - 小值自动 inline（无开销）
+ 3. 为什么用 std::string 存储值?
+    - C++17 标准库，无额外依赖
+    - SSO 优化（小值自动 inline）
+    - move semantics 避免不必要的拷贝
+    - 足够高效，满足教学需求
 
 **核心代码结构**:
 ```cpp
 class Database {
   struct StoredValue {
-    absl::Cord value;
-    absl::Time expiry = absl::InfiniteFuture();
+    std::string value;  // 改用 std::string（C++17）
+    std::chrono::steady_clock::time_point expiry;
 
     bool is_expired() const;
   };
@@ -492,10 +587,10 @@ class Database {
   absl::flat_hash_map<std::string, StoredValue> store_;
 
 public:
-  task<RespValue> Get(absl::string_view key);
-  task<RespValue> Set(absl::string_view key, absl::string_view value, absl::Duration ttl);
-  task<RespValue> Del(const std::vector<absl::string_view>& keys);
-  task<RespValue> Exists(const std::vector<absl::string_view>& keys);
+  Task<RespValue> Get(const std::string& key);
+  Task<RespValue> Set(const std::string& key, const std::string& value, std::chrono::seconds ttl);
+  Task<RespValue> Del(const std::vector<std::string>& keys);
+  Task<RespValue> Exists(const std::vector<std::string>& keys);
 };
 ```
 
@@ -545,14 +640,14 @@ docs/LESSONS_LEARNED.md                     # 数据库设计知识点
 **核心代码结构**:
 ```cpp
 class HashStore {
-  using FieldMap = absl::flat_hash_map<std::string, absl::Cord>;
+  using FieldMap = absl::flat_hash_map<std::string, std::string>;
   absl::flat_hash_map<std::string, FieldMap> hash_store_;
 
 public:
-  task<RespValue> HSet(absl::string_view key, absl::string_view field, absl::string_view value);
-  task<RespValue> HGet(absl::string_view key, absl::string_view field);
-  task<RespValue> HDel(absl::string_view key, const std::vector<absl::string_view>& fields);
-  task<RespValue> HGetAll(absl::string_view key);  // 返回 {field, value} 数组
+  Task<RespValue> HSet(const std::string& key, const std::string& field, const std::string& value);
+  Task<RespValue> HGet(const std::string& key, const std::string& field);
+  Task<RespValue> HDel(const std::string& key, const std::vector<std::string>& fields);
+  Task<RespValue> HGetAll(const std::string& key);  // 返回 {field, value} 数组
 };
 ```
 
@@ -596,15 +691,15 @@ docs/LESSONS_LEARNED.md                     # 嵌套容器知识点
 **核心代码结构**:
 ```cpp
 class ListStore {
-  using ListType = absl::InlinedVector<absl::Cord, 8>;
+  using ListType = absl::InlinedVector<std::string, 8>;
   absl::flat_hash_map<std::string, ListType> list_store_;
 
 public:
-  task<RespValue> LPush(absl::string_view key, const std::vector<absl::string_view>& values);
-  task<RespValue> RPush(absl::string_view key, const std::vector<absl::string_view>& values);
-  task<RespValue> LPop(absl::string_view key, size_t count = 1);
-  task<RespValue> RPop(absl::string_view key, size_t count = 1);
-  task<RespValue> LRange(absl::string_view key, int64_t start, int64_t stop);
+  Task<RespValue> LPush(const std::string& key, const std::vector<std::string>& values);
+  Task<RespValue> RPush(const std::string& key, const std::vector<std::string>& values);
+  Task<RespValue> LPop(const std::string& key, size_t count = 1);
+  Task<RespValue> RPop(const std::string& key, size_t count = 1);
+  Task<RespValue> LRange(const std::string& key, int64_t start, int64_t stop);
 };
 ```
 
@@ -647,10 +742,11 @@ Small List (≤8 elements):         Large List (>8 elements):
    - 支持链式操作（SINTER key1 key2 key3）
    - 便于实现交集优化（从小到大）
 
-3. 为什么用 Cord 作为集合元素?
-   - 支持长字符串作为集合成员
-   - COW 特性（避免拷贝）
-   - 统一的字符串处理
+ 3. 为什么用 std::string 作为集合元素?
+    - C++17 标准库，无额外依赖
+    - SSO 优化（短字符串无堆分配）
+    - move semantics 传递高效
+    - 与其他数据类型保持一致
 
 **核心代码结构**:
 ```cpp
@@ -658,12 +754,12 @@ class SetStore {
   absl::flat_hash_map<std::string, absl::flat_hash_set<std::string>> set_store_;
 
 public:
-  task<RespValue> SAdd(absl::string_view key, const std::vector<absl::string_view>& members);
-  task<RespValue> SRem(absl::string_view key, const std::vector<absl::string_view>& members);
-  task<RespValue> SMembers(absl::string_view key);
-  task<RespValue> SIsMember(absl::string_view key, absl::string_view member);
-  task<RespValue> SInter(const std::vector<absl::string_view>& keys);
-  task<RespValue> SUnion(const std::vector<absl::string_view>& keys);
+  Task<RespValue> SAdd(const std::string& key, const std::vector<std::string>& members);
+  Task<RespValue> SRem(const std::string& key, const std::vector<std::string>& members);
+  Task<RespValue> SMembers(const std::string& key);
+  Task<RespValue> SIsMember(const std::string& key, const std::string& member);
+  Task<RespValue> SInter(const std::vector<std::string>& keys);
+  Task<RespValue> SUnion(const std::vector<std::string>& keys);
 };
 ```
 
@@ -690,44 +786,44 @@ docs/LESSONS_LEARNED.md                     # 集合知识点
 
 **设计决策**:
 1. 为什么用 Time Wheel 而不是 sorted map?
-   - O(1) 插入/删除 vs O(log n)
-   - 无需复杂的树结构
-   - 适合大量短命名的 key
+    - O(1) 插入/删除 vs O(log n)
+    - 无需复杂的树结构
+    - 适合大量短命名的 key
 
 2. 为什么轮大小选 1024?
-   - 平衡内存和精度
-   - Tick 间隔 10ms，总覆盖 10.24s
-   - 更长的 TTL 使用多级轮
+    - 平衡内存和精度
+    - Tick 间隔 10ms，总覆盖 10.24s
+    - 更长的 TTL 使用多级轮
 
 3. 为什么用惰性删除?
-   - 避免阻塞请求
-   - 访问时检查过期
-   - 定期批量清理（后台线程）
+    - 避免阻塞请求
+    - 访问时检查过期
+    - 定期批量清理（后台线程）
 
 **核心代码结构**:
 ```cpp
 class TimeWheel {
   static constexpr size_t kWheelSize = 1024;
-  static constexpr absl::Duration kTickDuration = absl::Milliseconds(10);
+  static constexpr std::chrono::milliseconds kTickDuration{10};
 
   struct Bucket {
-    std::vector<std::pair<absl::string_view, int64_t>> entries;
+    std::vector<std::pair<std::string, int64_t>> entries;
   };
 
   std::array<Bucket, kWheelSize> wheel_;
   size_t current_tick_ = 0;
 
 public:
-  void Add(absl::string_view key, absl::Duration ttl);
+  void Add(const std::string& key, std::chrono::milliseconds ttl);
   void Tick();  // 每个 tick 周期调用
 };
 
 class Database {
   TimeWheel expire_wheel_;
-  absl::Mutex expire_mutex_;  // 保护 wheel 和 store 的并发访问
+  std::mutex expire_mutex_;  // 保护 wheel 和 store 的并发访问
 
-  task<RespValue> Expire(absl::string_view key, absl::Duration ttl);
-  task<RespValue> TTL(absl::string_view key);
+  Task<RespValue> Expire(const std::string& key, std::chrono::seconds ttl);
+  Task<RespValue> TTL(const std::string& key);
 };
 ```
 
@@ -890,10 +986,37 @@ perf stat -e syscalls:sys_enter_getpid,syscalls:sys_enter_read ...
    - 对比性能差异
    - 教学目的
 
-3. io_uring 参数调优:
-   - entries=4096（平衡内存和并发）
-   - SQ_POLL（减少 syscall）
-   - FAST_POLL（epoll 加速）
+ 3. io_uring 参数调优:
+    - entries=4096（平衡内存和并发）
+    - SQ_POLL（减少 syscall）
+    - FAST_POLL（epoll 加速）
+
+**迁移策略**:
+
+从 epoll 到 io_uring 的渐进式迁移：
+- **阶段 1**：实现 IoUring 封装类，与 EpollServer 并存
+- **阶段 2**：抽象 I/O 接口，支持两种后端切换
+- **阶段 3**：逐步将 Read/Write 操作迁移到 io_uring
+- **阶段 4**：迁移 Accept/Close 操作，使用链接优化
+- **阶段 5**：完全移除 epoll 代码（保留为 fallback 选项）
+
+接口抽象设计：
+```cpp
+// 通用 I/O 接口
+class AsyncIo {
+public:
+  virtual ~AsyncIo() = default;
+  virtual task<ssize_t> Read(int fd, void* buf, size_t len) = 0;
+  virtual task<ssize_t> Write(int fd, const void* buf, size_t len) = 0;
+  virtual task<int> Accept(int listen_fd, sockaddr* addr, socklen_t* len) = 0;
+};
+
+// epoll 实现
+class EpollIo : public AsyncIo { /* ... */ };
+
+// io_uring 实现
+class IoUringIo : public AsyncIo { /* ... */ };
+```
 
 **核心代码结构**:
 ```cpp
@@ -1076,17 +1199,18 @@ QPS (SET)          | 150K      | 200K   | 75%
 │           Nano-Redis 架构概览                │
 ├─────────────────────────────────────────────────┤
 │ 网络层: io_uring (零拷贝，批量提交)         │
-│ 异步模型: C++20 Coroutines                 │
-│ 协议: RESP2 (零拷贝解析)                  │
+│ 异步模型: 自实现 Task<T> (C++17)            │
+│ 协议: RESP2 (高效解析)                     │
 ├─────────────────────────────────────────────────┤
 │ 存储: flat_hash_map (Swiss Table)            │
 │ List: InlinedVector (inline 优化)           │
-│ String: string_view + Cord (COW)            │
+│ String: std::string (SSO 优化)              │
 │ 过期: Time Wheel (O(1))                   │
 ├─────────────────────────────────────────────────┤
 │ 内存: Arena Allocator (批量分配)            │
-│ 同步: Mutex (读写锁)                      │
-│ 时间: absl::Time (高精度)                 │
+│ 同步: std::mutex                          │
+│ 时间: std::chrono (标准库)                │
+│ 构建: CMake                                │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -1213,7 +1337,7 @@ cd /home/ubuntu/nano_redis
 
 | 主题 | 资源 | 链接 |
 |------|------|------|
-| **C++20** | cppreference | https://en.cppreference.com/w/cpp/20 |
+| **C++17** | cppreference | https://en.cppreference.com/w/cpp/17 |
 | **io_uring** | liburing 文档 | https://unixism.net/loti/ |
 | **Abseil** | Abseil Guide | https://abseil.io/docs/cpp/ |
 | **Swiss Tables** | Abseil Blog | https://abseil.io/blog/ |
@@ -1253,9 +1377,10 @@ bazel test //tests/xxx_test
 ### Q4: 需要什么环境？
 **A**:
 - Linux 5.1+ (io_uring 支持)
-- C++20 编译器 (GCC 10+, Clang 12+)
-- Bazel 或 CMake
+- C++17 编译器 (GCC 8+, Clang 7+)
+- CMake 3.16+
 - GoogleTest
+- Abseil-Cpp (使用 add_subdirectory 引入)
 
 ---
 

@@ -195,11 +195,272 @@ Bazel:
 ```
 CMake:
   version.cc (src) + status.h (header)
-          ↓
-    nano_redis (static library)
+           ↓
+     nano_redis (static library)
 
 Bazel:
   version.cc (src) + status.h (header)
-          ↓
-    nano_redis (static library)
+           ↓
+     nano_redis (static library)
 ```
+
+---
+
+# Commit 2: Arena Allocator - 架构说明
+
+## 模块设计
+
+### Arena 模块
+
+**文件**:
+- `include/nano_redis/arena.h` (公共 API)
+- `src/arena.cc` (实现)
+
+**职责**:
+- 高效的批量内存分配
+- 内存对齐支持
+- 自动内存管理
+
+**接口**:
+```cpp
+class Arena {
+ public:
+  Arena();                                    // 默认构造
+  explicit Arena(size_t block_size);          // 指定块大小
+
+  void* Allocate(size_t size,                // 分配内存
+                 size_t alignment = alignof(std::max_align_t));
+  
+  void Reset();                               // 释放所有内存
+  
+  size_t MemoryUsage() const;                 // 内存使用量
+  size_t BlockCount() const;                  // 块数量
+  size_t AllocatedBytes() const;             // 已分配字节数
+};
+```
+
+## 内存布局
+
+### 当前块状态
+
+```
+┌────────────────────────────────────────────────────┐
+│ Block N (当前活跃块)                                │
+├────────────────────────────────────────────────────┤
+│ [已分配区域] [对齐填充] [空闲区域]                  │
+│     ↑ ptr_                           ↑ end_       │
+└────────────────────────────────────────────────────┘
+```
+
+### 多块分配
+
+```
+时间线：
+T0: 初始状态
+    ptr_ = nullptr, end_ = nullptr
+
+T1: Allocate(100)
+    ┌─────────────────────┐
+    │ [100B] [空闲]       │
+    └─────────────────────┘
+    ptr_ = 100, end_ = 4096
+
+T2: Allocate(500)
+    ┌─────────────────────┐
+    │ [100B] [500B] [空闲] │
+    └─────────────────────┘
+    ptr_ = 600, end_ = 4096
+
+T3: Allocate(4000) → 不够！
+    ┌─────────────────────┐
+    │ [100B] [500B]       │ ← Block 0 (保留)
+    └─────────────────────┘
+
+    ┌─────────────────────────────┐
+    │ [4000B] [空闲]               │ ← Block 1 (新分配)
+    └─────────────────────────────┘
+    ptr_ = 4000, end_ = 8192
+```
+
+### 块向量管理
+
+```
+blocks_: std::vector<void*>
+    ↓
+    [Block0, Block1, Block2, ...]
+       ↓        ↓        ↓
+    void*    void*    void*
+   4KB      4KB      4KB
+```
+
+## 分配算法
+
+### 对齐处理
+
+```cpp
+void* Allocate(size_t size, size_t alignment) {
+  // 当前地址
+  uintptr_t current = reinterpret_cast<uintptr_t>(ptr_);
+  
+  // 计算对齐偏移
+  uintptr_t offset = current % alignment;
+  uintptr_t padding = (offset == 0) ? 0 : alignment - offset;
+  
+  // 检查是否有足够空间
+  if (ptr_ + size + padding > end_) {
+    AllocateNewBlock(size + padding);
+    padding = reinterpret_cast<uintptr_t>(ptr_) % alignment;
+    padding = (padding == 0) ? 0 : alignment - padding;
+  }
+  
+  // 返回对齐后的地址
+  char* result = ptr_ + padding;
+  ptr_ += size + padding;
+  
+  return result;
+}
+```
+
+### 对齐示例
+
+```
+假设 ptr_ = 0x1003 (未对齐到 8 字节)
+alignment = 8
+
+offset = 0x1003 % 8 = 3
+padding = 8 - 3 = 5
+
+分配后：
+    [padding=5][size=16]
+    0x1003 ──────────> 0x1008 ─────────> 0x1018
+    ↑ ptr_          ↑ result         ↑ 新 ptr_
+    
+result = 0x1008 (已对齐到 8 字节)
+```
+
+## 依赖关系
+
+```
+arena.h  ────────┐
+                 ├─────> arena_test.cc
+arena.cc  ────────┘
+
+arena.h  ───────────> arena_bench.cc
+```
+
+## 数据流
+
+### 分配流程
+
+```
+Client Code
+      │
+      │ arena.Allocate(64)
+      ▼
+检查对齐
+      │
+      ├─ 计算偏移
+      ├─ 检查空间
+      │
+      ▼
+空间不足?
+      │
+      ├─ Yes → AllocateNewBlock()
+      └─ No  → 直接分配
+              │
+              ├─ ptr_ += size + padding
+              └─ 返回对齐后的地址
+```
+
+### 释放流程
+
+```
+Client Code
+      │
+      │ arena.Reset()
+      ▼
+遍历 blocks_
+      │
+      ├─ for each block: ::operator delete(block)
+      └─ blocks_.clear()
+              │
+              ├─ ptr_ = nullptr
+              ├─ end_ = nullptr
+              └─ memory_usage_ = 0
+```
+
+## 性能特征
+
+### 时间复杂度
+
+| 操作 | 复杂度 | 说明 |
+|------|--------|------|
+| Allocate | O(1) | 指针移动 |
+| Reset | O(n) | n = 块数量 |
+| MemoryUsage | O(1) | 返回成员变量 |
+
+### 空间复杂度
+
+- **最佳情况**: 所有对象在一个块中
+- **最坏情况**: 每个对象需要新块（碎片化）
+- **平均情况**: 块利用率 ~80%
+
+## 扩展点
+
+### 后续优化方向
+
+1. **Per-thread Arena**
+   ```cpp
+   class ThreadLocalArena {
+     static thread_local Arena arena_;
+   public:
+     static void* Allocate(size_t size);
+   };
+   ```
+
+2. **对象池**
+   ```cpp
+   template<typename T>
+   class ObjectPool {
+     Arena arena_;
+   public:
+     T* Allocate() { return new (arena_.Allocate(sizeof(T))) T; }
+   };
+   ```
+
+3. **智能指针包装**
+   ```cpp
+   template<typename T>
+   using ArenaPtr = std::unique_ptr<T, ArenaDeleter>;
+   ```
+
+## 内存安全
+
+### 潜在问题及防护
+
+1. **悬空指针**: Reset() 后所有指针失效
+   - **防护**: 文档警告生命周期
+
+2. **内存泄漏**: 忘记调用 Reset()
+   - **防护**: 使用 RAII 包装器
+
+3. **越界访问**: Allocate 后写入超出大小
+   - **防护**: 使用调试模式检测
+
+### 调试支持
+
+```cpp
+#ifdef DEBUG
+  void* Allocate(size_t size, size_t alignment) {
+    // 在每个分配后添加 canary
+    char* ptr = static_cast<char*>(DoAllocate(size + 8));
+    memset(ptr + size, 0xAB, 8);
+    return ptr;
+  }
+  
+  void CheckCanaries() {
+    // 检查 canary 是否被破坏
+  }
+#endif
+```
+
