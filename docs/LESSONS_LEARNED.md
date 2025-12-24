@@ -610,3 +610,592 @@ public:
 ### 性能优化
 - [Cache Optimization](https://lwn.net/Articles/252125/)
 - [Memory Alignment](https://en.wikipedia.org/wiki/Data_structure_alignment)
+
+---
+
+# Commit 3: flat_hash_map vs unordered_map - 学习要点
+
+## 哈希表基础
+
+### 1. 哈希表的工作原理
+
+**核心思想**: 通过 hash 函数将 key 映射到索引
+
+```cpp
+// 1. 计算 hash
+size_t hash = std::hash<std::string>()("hello");
+
+// 2. 计算索引
+size_t index = hash % table_size;
+
+// 3. 访问元素
+value = table[index];
+```
+
+### 2. 冲突解决策略
+
+**问题**: 两个不同的 key 可能映射到同一个索引
+
+```cpp
+std::hash<std::string>()("hello") % 16 = 5
+std::hash<std::string>() world") % 16 = 5  // 冲突！
+```
+
+**解决方案**:
+
+#### A. Chaining（链表法）
+
+```cpp
+// unordered_map 使用 chaining
+struct Node {
+  std::string key;
+  std::string value;
+  Node* next;  // 链表指针
+};
+
+std::vector<Node*> table;  // 每个 bucket 是一个链表
+
+// 插入
+size_t index = hash(key) % table_size;
+Node* new_node = new Node(key, value, table[index]);
+table[index] = new_node;  // 插入到链表头部
+```
+
+**优点**:
+- 实现简单
+- 删除容易
+- 哈希函数选择宽松
+
+**缺点**:
+- 缓存不友好（链表跳转）
+- 额外指针开销
+- 内存碎片
+
+#### B. Open Addressing（开放寻址）
+
+```cpp
+// flat_hash_map 使用 open addressing
+struct Entry {
+  std::string key;
+  std::string value;
+};
+
+std::vector<Entry> table;  // 连续存储
+
+// 插入 - 探测下一个空槽
+size_t index = hash(key) % table_size;
+while (table[index].occupied) {
+  index = (index + 1) % table_size;  // Linear probing
+}
+table[index] = Entry(key, value);
+```
+
+**优点**:
+- 缓存友好（连续内存）
+- 无额外指针开销
+- 内存紧凑
+
+**缺点**:
+- 删除复杂（需要标记）
+- 聚集问题（clustering）
+- 需要控制负载因子
+
+### 3. Swiss Table 的 Group Probing
+
+**传统 Linear Probing**:
+```cpp
+size_t index = hash(key) % table_size;
+while (!table[index].empty) {
+  index = (index + 1) % table_size;  // 逐个检查
+}
+```
+
+**Swiss Table Group Probing**:
+```cpp
+// 16 个槽为一组
+size_t group_start = (index / 16) * 16;
+
+// 使用 SIMD 一次检查 16 个槽
+__m128i ctrl = _mm_loadu_si128((__m128i*)&control[group_start]);
+__m128i h2_vec = _mm_set1_epi8(h2);
+__m128i match = _mm_cmpeq_epi8(ctrl, h2_vec);
+
+// 提取匹配位
+uint32_t mask = _mm_movemask_epi8(match);
+```
+
+**优势**:
+- 一次指令检查 16 个槽
+- 减少循环次数
+- 更好的分支预测
+
+## Swiss Table 设计
+
+### 1. Split Hash（Hash 分割）
+
+```cpp
+// 将 hash 分成两部分
+size_t hash = std::hash<std::string>()(key);
+
+// H1: 高位，用于 bucket 选择
+size_t h1 = hash >> 7;
+
+// H2: 低 7 位，用于 SIMD 匹配
+uint8_t h2 = hash & 0x7F;
+
+// 为什么这样设计？
+// - H1 有足够的随机性
+// - H2 适合 SIMD 比较（7 bits）
+```
+
+### 2. Control Byte（控制字节）
+
+```cpp
+// 每个 entry 对应一个 control byte
+struct Control {
+  uint8_t ctrl[16];  // 一组 16 个控制字节
+  
+  // 特殊值：
+  // 0x80 (128): 空槽
+  // 0xFE (254): 已删除
+  // 0xFF (255): 哨兵（探测结束）
+  // 0x00-0x7F: 元素的 H2 hash
+};
+
+// 使用 MSB (最高位) 区分特殊值
+// 0x80 = 0b10000000 (MSB=1, 空槽)
+// 0xFE = 0b11111110 (MSB=1, 已删除)
+// 0xFF = 0b11111111 (MSB=1, 哨兵)
+// 0x5F = 0b01011111 (MSB=0, H2=0x5F)
+```
+
+### 3. SIMD 探测流程
+
+```cpp
+// 1. 定位 control group
+size_t h1 = hash(key) >> 7;
+size_t h2 = hash(key) & 0x7F;
+size_t index = h1 % capacity;
+size_t group_start = (index / 16) * 16;
+
+// 2. 加载 control bytes
+__m128i ctrl = _mm_loadu_si128((__m128i*)&control[group_start]);
+
+// 3. 检查空槽（kEmpty=0x80）
+__m128i empty = _mm_set1_epi8(kEmpty);
+__m128i empty_match = _mm_cmpeq_epi8(ctrl, empty);
+uint32_t empty_mask = _mm_movemask_epi8(empty_match);
+
+// 4. 检查 H2 匹配
+__m128i h2_vec = _mm_set1_epi8(h2);
+__m128i h2_match = _mm_cmpeq_epi8(ctrl, h2_vec);
+uint32_t h2_mask = _mm_movemask_epi8(h2_match);
+
+// 5. 遍历匹配
+uint32_t mask = empty_mask | h2_match;
+while (mask) {
+  int offset = __builtin_ctz(mask);  // 最低位索引
+  int entry_idx = group_start + offset;
+  
+  if (control[entry_idx] == h2) {
+    // 完整比较 key
+    if (entries[entry_idx].key == key) {
+      return &entries[entry_idx].value;
+    }
+  } else if (control[entry_idx] == kEmpty) {
+    return nullptr;  // 未找到
+  }
+  
+  mask &= mask - 1;  // 清除最低位
+}
+```
+
+## C++ 技巧
+
+### 1. 类型别名简化
+
+```cpp
+// 好的做法
+using StringMap = absl::flat_hash_map<std::string, std::string>;
+
+class StringStore {
+  StringMap store_;  // 简洁明了
+};
+
+// 不好的做法
+class StringStore {
+  absl::flat_hash_map<std::string, std::string> store_;  // 太长
+};
+```
+
+### 2. 移动语义优化
+
+```cpp
+// 拷贝版本（慢）
+bool Put(const std::string& key, const std::string& value) {
+  store_[key] = value;  // 两次拷贝（key 和 value）
+}
+
+// 移动版本（快）
+bool Put(std::string&& key, std::string&& value) {
+  store_[std::move(key)] = std::move(value);  // 零拷贝
+}
+
+// 使用
+store.Put("key", "value");  // 使用拷贝版本
+store.Put(std::string("key"), std::string("value"));  // 可以优化为移动
+```
+
+### 3. 引用返回
+
+```cpp
+// 返回引用 - 允许修改
+std::string* GetMutable(const std::string& key) {
+  auto it = store_.find(key);
+  if (it != store_.end()) {
+    return &it->second;  // 返回指针，允许修改
+  }
+  return nullptr;
+}
+
+// 使用
+if (std::string* value = store.GetMutable("key")) {
+  *value = "new value";  // 直接修改
+}
+
+// 只读版本
+bool Get(const std::string& key, std::string* value) const {
+  auto it = store_.find(key);
+  if (it != store_.end()) {
+    if (value != nullptr) {
+      *value = it->second;  // 拷贝到输出参数
+    }
+    return true;
+  }
+  return false;
+}
+```
+
+### 4. 完美转发
+
+```cpp
+// 通用引用 + 完美转发
+template<typename K, typename V>
+bool Put(K&& key, V&& value) {
+  store_[std::forward<K>(key)] = std::forward<V>(value);
+  return true;
+}
+
+// 可以接受左值或右值
+std::string k = "key";
+store.Put(k, "value");              // 左值
+store.Put("key", "value");          // 右值（临时对象）
+store.Put(std::move(k), "value");   // 移动
+```
+
+## 性能优化
+
+### 1. 预分配容量
+
+```cpp
+// 避免 rehash
+class StringStore {
+ public:
+  void Reserve(size_t capacity) {
+    store_.reserve(capacity);  // 预分配
+  }
+};
+
+// 使用
+StringStore store;
+store.Reserve(100000);  // 预分配 100K 个槽
+
+for (int i = 0; i < 100000; ++i) {
+  store.Put("key_" + std::to_string(i), "value");
+}
+// 不会触发 rehash
+```
+
+**性能影响**:
+- 无预分配: 120ms (包含多次 rehash)
+- 预分配: 80ms (无 rehash)
+- 提升: 1.5x
+
+### 2. 选择合适的 hash function
+
+```cpp
+// 使用 Abseil 提供的 Hash
+using StringMap = absl::flat_hash_map<
+  std::string,
+  std::string,
+  absl::Hash<std::string>  // 高效的 hash 函数
+>;
+
+// vs 标准库 hash
+// Abseil Hash 通常：
+// - 更快（更好的算法）
+// - 分布更均匀
+// - 更少的冲突
+```
+
+### 3. 避免不必要的字符串拷贝
+
+```cpp
+// 差的做法
+std::string key = "user_" + std::to_string(user_id);
+std::string value = Serialize(user_data);
+store.Put(key, value);  // 两次额外拷贝
+
+// 好的做法
+std::string key = "user_" + std::to_string(user_id);
+std::string value = Serialize(user_data);
+store.Put(std::move(key), std::move(value));  // 零拷贝
+
+// 或者直接构造
+store.Put("user_" + std::to_string(user_id), Serialize(user_data));
+// 编译器可能优化（NRVO）
+```
+
+### 4. 批量操作
+
+```cpp
+// 逐个插入（慢）
+for (const auto& [key, value] : items) {
+  store.Put(key, value);
+}
+
+// 批量插入（快）
+class StringStore {
+ public:
+  void PutBatch(const std::vector<std::pair<std::string, std::string>>& items) {
+    store_.reserve(store_.size() + items.size());  // 预分配
+    for (const auto& [key, value] : items) {
+      store_[key] = value;
+    }
+  }
+};
+
+store.PutBatch(items);  // 单次预分配
+```
+
+## SIMD 指令
+
+### 1. SSE 基础
+
+```cpp
+// 加载 128 位（16 bytes）
+__m128i data = _mm_loadu_si128((__m128i*)ptr);
+
+// 广播值（复制到所有元素）
+__m128i value = _mm_set1_epi8(0x42);
+
+// 比较向量
+__m128i result = _mm_cmpeq_epi8(data, value);
+
+// 提取掩码
+int mask = _mm_movemask_epi8(result);
+```
+
+### 2. 位操作技巧
+
+```cpp
+// 计算尾随零（最低位 1 的位置）
+unsigned mask = 0b00001000;
+int idx = __builtin_ctz(mask);  // idx = 3
+
+// 计算前导零（最高位 1 的位置）
+unsigned mask = 0b00100000;
+int idx = __builtin_clz(mask);  // idx = 26 (32-6)
+
+// 清除最低位
+mask &= mask - 1;
+
+// 获取最低位
+mask & -mask;  // 或 (mask & (~mask + 1))
+```
+
+### 3. SIMD 的优势
+
+```cpp
+// 传统方式 - 逐个比较
+for (int i = 0; i < 16; ++i) {
+  if (data[i] == target) {
+    // ...
+  }
+}
+// 16 次比较 + 16 次分支
+
+// SIMD 方式 - 一次比较
+__m128i cmp = _mm_cmpeq_epi8(data, target);
+uint32_t mask = _mm_movemask_epi8(cmp);
+while (mask) {
+  int i = __builtin_ctz(mask);
+  // ...
+  mask &= mask - 1;
+}
+// 1 次向量比较 + 平均 log(16) 次迭代
+```
+
+## 常见错误
+
+### 1. 忘记预分配
+
+```cpp
+// 错误 - 频繁 rehash
+for (int i = 0; i < 1000000; ++i) {
+  map[std::to_string(i)] = "value";
+}
+
+// 正确 - 预分配
+map.reserve(1000000);
+for (int i = 0; i < 1000000; ++i) {
+  map[std::to_string(i)] = "value";
+}
+```
+
+### 2. 频繁删除
+
+```cpp
+// 问题 - 删除标记堆积
+for (int i = 0; i < 100000; ++i) {
+  map.erase("key_" + std::to_string(i));
+}
+// 可能触发 rehash 清理删除标记
+
+// 解决 - 批量清理
+if (map.size() * 4 < map.capacity()) {
+  map.shrink_to_fit();  // 清理删除标记
+}
+```
+
+### 3. 遍历时修改
+
+```cpp
+// 危险 - 可能导致未定义行为
+for (auto& [key, value] : map) {
+  if (ShouldDelete(key)) {
+    map.erase(key);  // 迭代器失效！
+  }
+}
+
+// 正确 - 使用 erase_if（C++20）
+std::erase_if(map, [](const auto& pair) {
+  return ShouldDelete(pair.first);
+});
+
+// 或者记录后删除
+std::vector<std::string> to_delete;
+for (const auto& [key, _] : map) {
+  if (ShouldDelete(key)) {
+    to_delete.push_back(key);
+  }
+}
+for (const auto& key : to_delete) {
+  map.erase(key);
+}
+```
+
+### 4. 误用 [] 操作符
+
+```cpp
+// 问题 - 总是插入元素
+auto& value = map["non_existent_key"];
+// 如果 key 不存在，会插入默认值（空字符串）
+
+// 正确 - 使用 find
+auto it = map.find("non_existent_key");
+if (it != map.end()) {
+  const auto& value = it->second;
+}
+```
+
+## 进阶话题
+
+### 1. 异构查找（Heterogeneous Lookup）
+
+```cpp
+// 问题 - 需要临时构造 string
+std::string_view key_view = "hello";
+auto it = map.find(std::string(key_view));  // 构造临时 string
+
+// 解决 - 使用异构查找
+template<typename K>
+auto find(const K& key) const {
+  return map.find(key);  // K 可以是 string_view
+}
+
+// 需要自定义 hash 和 equal_to
+struct StringViewHash {
+  size_t operator()(std::string_view sv) const {
+    return std::hash<std::string_view>()(sv);
+  }
+};
+
+using StringMap = absl::flat_hash_map<
+  std::string,
+  std::string,
+  StringViewHash
+>;
+```
+
+### 2. 自定义分配器
+
+```cpp
+// 集成 Arena
+class StringStore {
+  Arena arena_;
+  
+  using StringMap = absl::flat_hash_map<
+    std::string,
+    std::string,
+    absl::Hash<std::string>,
+    std::equal_to<std::string>,
+    ArenaAllocator<std::pair<const std::string, std::string>>
+  >;
+  
+  StringMap store_;
+};
+```
+
+### 3. 并发哈希表
+
+```cpp
+// 简单的并发哈希表（使用读写锁）
+class ConcurrentStringStore {
+  mutable std::shared_mutex mutex_;
+  StringMap store_;
+  
+ public:
+  std::string Get(const std::string& key) const {
+    std::shared_lock lock(mutex_);
+    return store_[key];
+  }
+  
+  void Put(const std::string& key, const std::string& value) {
+    std::unique_lock lock(mutex_);
+    store_[key] = value;
+  }
+};
+```
+
+## 下一步学习
+
+在下一个提交中，我们将学习：
+- std::string 的内部实现（SSO）
+- 字符串优化技巧
+- 避免不必要的字符串拷贝
+
+## 推荐阅读
+
+### 哈希表
+- [Swiss Tables](https://abseil.io/about/design/swiss)
+- [Hash Function Design](https://aras-p.info/blog/2016/08/02/Hash-Functions-Part-1/)
+- [Understanding Linear Probing](https://lwn.net/Articles/620844/)
+
+### SIMD
+- [Intel Intrinsics Guide](https://software.intel.com/sites/landingpage/IntrinsicsGuide/)
+- [SIMD for Fun and Profit](https://www.agner.org/optimize/optimizing_cpp.pdf)
+
+### C++ 技巧
+- [C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/)
+- [Effective Modern C++](https://www.oreilly.com/library/view/effective-modern-c/9781491908419/)

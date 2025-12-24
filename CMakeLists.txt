@@ -31,16 +31,19 @@ add_subdirectory(${ABSEIL_ROOT} ${CMAKE_BINARY_DIR}/abseil-cpp EXCLUDE_FROM_ALL)
 set(REDIS_SOURCES
   src/version.cc
   src/arena.cc
+  src/string_store.cc
 )
 
 set(REDIS_HEADERS
   include/nano_redis/version.h
   include/nano_redis/status.h
   include/nano_redis/arena.h
+  include/nano_redis/string_store.h
 )
 
 add_library(nano_redis STATIC ${REDIS_SOURCES} ${REDIS_HEADERS})
 target_include_directories(nano_redis PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(nano_redis PUBLIC absl::flat_hash_map)
 
 # 测试
 add_executable(version_test tests/version_test.cc)
@@ -58,4 +61,7 @@ find_package(benchmark QUIET)
 if(benchmark_FOUND)
   add_executable(arena_bench tests/arena_bench.cc)
   target_link_libraries(arena_bench nano_redis benchmark::benchmark)
+  
+  add_executable(hash_table_bench tests/hash_table_bench.cc)
+  target_link_libraries(hash_table_bench nano_redis benchmark::benchmark)
 endif()

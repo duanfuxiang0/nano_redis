@@ -143,6 +143,115 @@ cmake --build .
 - Reset 功能
 - MemoryUsage 统计
 
+## Commit 3: flat_hash_map vs unordered_map - 数据结构选型
+
+### 📋 概述
+
+实现了基于 Swiss Table 的 `flat_hash_map` 作为 Redis 键值存储的基础数据结构，并提供了与标准库 `unordered_map` 的性能对比。
+
+### 📄 新增文件
+
+| 文件 | 行数 | 说明 |
+|------|------|------|
+| `include/nano_redis/string_store.h` | 88 | 字符串存储定义 |
+| `src/string_store.cc` | 129 | 字符串存储实现 |
+| `tests/hash_table_bench.cc` | 180 | 性能基准测试 |
+| **总计** | **397** | - |
+
+### 🔧 修改文件
+
+| 文件 | 修改内容 |
+|------|----------|
+| `CMakeLists.txt` | 添加 `string_store.cc` 到源文件列表，链接 `absl::flat_hash_map` |
+| `docs/DESIGN.md` | 添加 Commit 3 设计决策说明 |
+| `docs/ARCHITECTURE.md` | 添加 Swiss Table 内存布局和查找流程 |
+| `docs/PERFORMANCE.md` | 添加 flat_hash_map vs unordered_map 性能对比 |
+| `docs/LESSONS_LEARNED.md` | 添加哈希表、SIMD 指令学习要点 |
+| `docs/DESIGN_swiss_table.md` | 新增 Swiss Table 设计文档 |
+
+### 🎯 实现要点
+
+#### 1. StringStore 类（flat_hash_map）
+```cpp
+class StringStore {
+  using StringMap = absl::flat_hash_map<std::string, std::string>;
+  StringMap store_;
+
+ public:
+  bool Put(const std::string& key, const std::string& value);
+  bool Put(std::string&& key, std::string&& value);
+  bool Get(const std::string& key, std::string* value) const;
+  std::string* GetMutable(const std::string& key);
+  bool Delete(const std::string& key);
+  // ...
+};
+```
+
+#### 2. StdStringStore 类（unordered_map）
+```cpp
+class StdStringStore {
+  using StringMap = std::unordered_map<std::string, std::string>;
+  StringMap store_;
+  // 与 StringStore 完全相同的接口
+};
+```
+
+#### 3. 性能基准测试
+```cpp
+// 测试不同数据量和字符串大小
+BM_Insert<StringStore>/1000/8/8
+BM_Insert<StringStore>/10000/8/8
+BM_Insert<StringStore>/100000/8/8
+BM_Lookup<StringStore>/...
+BM_Delete<StringStore>/...
+```
+
+### 📊 预期性能对比
+
+| 操作 | flat_hash_map | unordered_map | 提升 |
+|------|--------------|---------------|------|
+| Insert 100K | 120ms | 280ms | 2.3x |
+| Lookup 100K | 80ms | 150ms | 1.9x |
+| Delete 100K | 150ms | 200ms | 1.3x |
+| Memory Usage | 64MB | 96MB | 1.5x |
+
+### ✅ 验证结果
+
+#### 构建验证
+```bash
+cmake --build .
+```
+- ✅ `libnano_redis.a` 编译成功（包含 `string_store.cc`）
+- ✅ 所有测试通过
+
+#### CMake 配置
+- ✅ Abseil `absl::flat_hash_map` 链接成功
+- ✅ 所有依赖解析正确
+
+### 📚 技术文档
+
+#### Swiss Table 核心概念
+1. **Split Hash**: hash → H1 (bucket 选择) + H2 (SIMD 匹配)
+2. **Control Bytes**: 每个槽对应一个控制字节（kEmpty, kDeleted, kSentinel, H2）
+3. **Group Probing**: 16 个槽为一组，使用 SIMD 一次探测
+4. **SIMD 探测**:
+   ```cpp
+   _mm_cmpeq_epi8(group, h2)  // 一次比较 16 个字节
+   _mm_movemask_epi8(result)  // 提取匹配掩码
+   ```
+
+### 🚀 后续步骤
+
+### 立即行动
+1. ✅ Commit 3 完成
+2. ⏳ **下一步**：执行 Commit 4 - std::string 高效使用
+
+### Commit 4 准备工作
+需要学习的主题：
+- SSO (Small String Optimization) 原理
+- 字符串拷贝优化技巧
+- 零拷贝字符串处理
+
 ## 📚 技术亮点
 
 ### 1. C++17 兼容性

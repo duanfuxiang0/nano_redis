@@ -350,3 +350,218 @@ class ScopedArena {
 - [x] 单元测试通过（12/12）
 - [x] 性能基准测试实现
 - [x] 文档完整
+
+---
+
+# Commit 3: 数据结构选型 - flat_hash_map vs unordered_map
+
+## 概述
+
+本提交引入了基于 Swiss Table 的 `flat_hash_map` 作为 Redis 键值存储的基础数据结构，并与标准库的 `unordered_map` 进行性能对比。
+
+## 代码统计
+
+```
+文件                            | 行数 | 说明
+--------------------------------|------|------
+include/nano_redis/string_store.h |   82 | 字符串存储定义
+src/string_store.cc              |   95 | 字符串存储实现
+tests/hash_table_bench.cc        |  168 | 性能基准测试
+--------------------------------|------|------
+总计                            |  345 |
+```
+
+## 设计决策
+
+### 1. 为什么选择 flat_hash_map 而不是 unordered_map？
+
+| 特性 | flat_hash_map (Swiss Table) | unordered_map (标准库) |
+|------|---------------------------|----------------------|
+| **冲突处理** | Open addressing | Chaining (链表) |
+| **探测策略** | Group probing + SIMD | Linear probing |
+| **内存布局** | 连续数组 | Bucket 链表 |
+| **缓存局部性** | 优秀（连续存储） | 差（链表分散） |
+| **内存占用** | 较低（无链表指针） | 较高（额外指针） |
+| **删除复杂度** | 需标记删除 | 直接释放 |
+| **迭代器稳定性** | rehash 时失效 | 稳定 |
+
+**决策**：使用 flat_hash_map，优势在于：
+1. Cache 友好（连续内存）
+2. SIMD 加速（一次探测 16 个槽）
+3. 内存效率高（无链表指针）
+4. 适用于读多写少的场景
+
+### 2. Open Addressing vs Chaining
+
+```
+Open Addressing (flat_hash_map):
+  ┌─────────────────────────────────┐
+  │ [Entry 0] [Entry 1] [Entry 2] ... │
+  └─────────────────────────────────┘
+  冲突时：在数组中查找下一个空槽
+
+Chaining (unordered_map):
+  ┌─────────────────────────────────┐
+  │ bucket[0] → node → node → null  │
+  │ bucket[1] → node → null        │
+  └─────────────────────────────────┘
+  冲突时：添加到链表
+```
+
+### 3. Swiss Table 的核心设计
+
+#### Control Bytes
+
+```cpp
+// 每个 bucket 对应一个控制字节
+struct ControlGroup {
+  uint8_t ctrl[16];  // 16 个控制字节
+  
+  // 特殊值:
+  static constexpr uint8_t kEmpty = -128;   // 0x80: 空槽
+  static constexpr uint8_t kDeleted = -2;   // 0xFE: 已删除
+  static constexpr uint8_t kSentinel = -1;  // 0xFF: 哨兵位
+  static constexpr uint8_t kMask = 0x7F;    // H2 hash 的掩码
+};
+```
+
+#### SIMD 探测
+
+```cpp
+// 使用 SSE 指令一次比较 16 个槽
+__m128i ctrl = _mm_loadu_si128((__m128i*)control_ptr);
+__m128i target = _mm_set1_epi8(h2);  // H2 hash
+__m128i cmp = _mm_cmpeq_epi8(ctrl, target);
+
+// 提取匹配位
+unsigned mask = _mm_movemask_epi8(cmp);
+while (mask) {
+  int idx = __builtin_ctz(mask);  // 最低有效位
+  if (CheckSlot(start_idx + idx, key)) {
+    return &entries_[start_idx + idx];
+  }
+  mask &= mask - 1;  // 清除最低位
+}
+```
+
+### 4. 为什么不使用 node_hash_map？
+
+`node_hash_map` 虽然提供了指针稳定性，但存在：
+- 双重间接访问（bucket → node → data）
+- 额外的内存开销（每个节点单独分配）
+- 缓存局部性差
+
+**Redis 场景分析**：
+- 命令通常不保留迭代器引用
+- Key/Value 生命周期短（单次请求）
+- 读多写少，查找性能优先
+
+## 架构图
+
+```
+flat_hash_map 内存布局：
+
+┌────────────────────────────────────────────────────┐
+│ Control Bytes │ Metadata │  Entry 0  │  Entry 1 │
+│ [16 bytes]    │ [hashes] │ [key,val] │ [key,val]│
+└────────────────────────────────────────────────────┘
+  Group 0 (16 bytes)
+
+查找流程：
+1. hash(key) = (H1, H2)
+2. bucket = H1 % table_size
+3. group_start = (bucket / 16) * 16
+4. 使用 SIMD 比较 16 个 control bytes
+5. 找到匹配的 H2 值
+6. 完整比较 key
+```
+
+## 性能分析
+
+### 理论性能
+
+| 操作 | flat_hash_map | unordered_map | 复杂度 |
+|------|--------------|---------------|--------|
+| 插入 | O(1) 平均 | O(1) 平均 | 相同 |
+| 查找 | O(1) 平均 | O(1) 平均 | 相同 |
+| 删除 | O(1) 平均 | O(1) 平均 | 相同 |
+| 遍历 | O(n) | O(n) | 相同 |
+
+### 实际性能（预期）
+
+```
+基准测试（100K items, key=value=8 bytes）：
+
+操作                | flat_hash_map | unordered_map | 提升
+--------------------|--------------|---------------|------
+Insert              | 120ms        | 280ms         | 2.3x
+Lookup (cache hit)  | 80ms         | 150ms         | 1.9x
+Delete              | 150ms        | 200ms         | 1.3x
+Iterate             | 10ms         | 12ms          | 1.2x
+Memory Usage        | 64MB         | 96MB          | 1.5x
+```
+
+## 学习要点
+
+### 哈希表基础
+
+1. **Hash Function**
+   ```cpp
+   // Split hash into H1 and H2
+   size_t hash = std::hash<std::string>()(key);
+   size_t h1 = hash >> 7;        // 用于 bucket 选择
+   uint8_t h2 = hash & 0x7F;      // 用于 SIMD 匹配
+   ```
+
+2. **Collision Resolution**
+   - **Chaining**: 链表解决冲突
+   - **Open Addressing**: 探测下一个空槽
+     - Linear probing: i+1, i+2, i+3...
+     - Quadratic probing: i+1, i+4, i+9...
+     - Swiss Table: group probing
+
+3. **Load Factor**
+   ```cpp
+   // 当元素数量 > 容量 * load_factor 时 rehash
+   if (size_ > capacity() * kMaxLoadFactor) {
+     Rehash(capacity() * 2);
+   }
+   ```
+
+### SIMD 指令
+
+1. **SSE/AVX**
+   ```cpp
+   // 加载 128 位（16 bytes）
+   __m128i data = _mm_loadu_si128((__m128i*)ptr);
+   
+   // 设置向量（广播）
+   __m128i value = _mm_set1_epi8(target);
+   
+   // 比较向量
+   __m128i cmp = _mm_cmpeq_epi8(data, value);
+   
+   // 提取掩码
+   int mask = _mm_movemask_epi8(cmp);
+   ```
+
+2. **位操作**
+   ```cpp
+   // 计算尾随零（最低位索引）
+   int idx = __builtin_ctz(mask);  // Count Trailing Zeros
+   
+   // 清除最低位
+   mask &= mask - 1;
+   ```
+
+## 验收标准
+
+- [x] StringStore 类实现完成
+- [x] StdStringStore 对比类实现完成
+- [x] 性能基准测试实现
+- [x] 文档完整
+- [ ] 运行基准测试并验证性能提升
+
+## 下一步
+
+下一个提交将实现 **std::string 高效使用**，学习 SSO (Small String Optimization) 和字符串优化技巧。
