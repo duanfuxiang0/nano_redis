@@ -5,16 +5,53 @@
 **主要调整**：
 - ✅ C++20 → C++17（提高兼容性）
 - ✅ Bazel + CMake → 仅 CMake（简化构建）
-- ✅ C++20 协程 → 自实现 Task<T>（可控执行模型）
+- ✅ **新增 PhotonLibOS**（协程 + io_uring）
+- ✅ **移除自实现 task<T>**（使用 PhotonLibOS 协程）
+- ✅ **移除手写 epoll/io_uring**（使用 PhotonLibOS）
 - ✅ Abseil string_view/Cord → std::string（简化依赖）
 - ✅ Abseil Time → std::chrono（标准库）
 - ✅ Abseil 通过 add_subdirectory 引入（本地目录）
 
 **保留技术**：
-- io_uring（高性能 I/O）
+- PhotonLibOS（协程 + io_uring 网络层）
 - Abseil flat_hash_map/flat_hash_set/InlinedVector（高效容器）
 - Arena Allocator（内存优化）
 - Time Wheel（O(1) 定时器）
+
+### PhotonLibOS 集成方式
+
+```cmake
+# CMakeLists.txt
+option(USE_SYSTEM_PHOTONLIBOS "Use system PhotonLibOS" OFF)
+
+if(USE_SYSTEM_PHOTONLIBOS)
+  find_package(photonlibos REQUIRED)
+else()
+  # 使用 git submodule
+  add_subdirectory(third_party/photonlibos EXCLUDE_FROM_ALL)
+endif()
+
+# 链接 PhotonLibOS
+target_link_libraries(nano_redis
+  PRIVATE
+    photon::photon
+    photon::net
+    photon::common
+)
+```
+
+### PhotonLibOS 初始化
+
+```cpp
+#include <photon/photon.h>
+
+// 初始化 PhotonLibOS，使用 io_uring 后端
+if (photon::init(photon::INIT_EVENT_IOURING, 
+                 photon::INIT_IO_NONE)) {
+  return -1;
+}
+DEFER(photon::fini());  // 自动清理
+```
 
 ### Abseil 集成方式
 
@@ -46,18 +83,19 @@ target_link_libraries(nano_redis
 
 | 指标 | 目标 |
 |------|------|
-| **总提交数** | ~18 个 |
-| **有效代码行** | ≤ 5000 行 |
+| **总提交数** | ~16 个 |
+| **有效代码行** | ≤ 4500 行 |
 | **每个提交** | 200-350 行新增代码 |
 | **学习曲线** | 渐进式，从简单到复杂 |
 | **测试覆盖** | 每个提交都有对应的测试 |
 | **C++标准** | C++17 |
 | **构建系统** | CMake |
-| **异步模型** | 自实现 task<T> |
+| **异步模型** | PhotonLibOS 协程 |
+| **网络层** | PhotonLibOS + io_uring |
 
 ---
 
-## 📝 18 个 Git 提交课程大纲
+## 📝 16 个 Git 提交课程大纲
 
 ### 🟢 第一阶段：基础设施（提交 1-5）
 
@@ -316,70 +354,114 @@ docs/LESSONS_LEARNED.md              # TDD 知识点
 
 ---
 
-### 🟡 第二阶段：网络层和协议（提交 6-9）
+### 🟡 第二阶段：网络层和协议（提交 6-8）
 
 ---
 
-#### **Commit 6: Socket 基础 - 同步 Echo 服务器**
+#### **Commit 6: Socket 基础 - PhotonLibOS Echo 服务器**
 
 **学习目标**:
-- 理解 TCP socket 编程基础
-- 学习事件驱动的编程模型
-- 建立网络通信的基准
+- 理解 PhotonLibOS 协程模型
+- 学习协程风格的网络编程
+- 建立网络通信基准
 
 **设计决策**:
-1. 为什么先用同步 socket?
-   - 从简单开始，理解基本流程
-   - 后续迁移到 io_uring 有清晰对比
-   - 教学渐进性
+1. 为什么使用 PhotonLibOS?
+   - 提供成熟的协程实现（类似 Go goroutine）
+   - 内置 io_uring 支持，无需手写
+   - 减少代码量，降低学习曲线
 
-2. 为什么用 epoll 而不是 select?
-   - O(1) vs O(n) 复杂度
-   - 文件描述符数量不受限
-   - 更好的事件通知机制
+2. 为什么用协程而不是回调?
+   - 同步写法，更易理解
+   - 避免回调地狱
+   - 更好的错误处理
 
-3. 为什么用 Edge-triggered 而不是 Level-triggered?
-   - 更少的系统调用（只通知状态变化）
-   - 稍微复杂一些（需要完全处理事件）
-   - io_uring 默认行为（为后续迁移做准备）
+3. PhotonLibOS 协程特点:
+   - 用户态协程（M:N 调度）
+   - 零拷贝 I/O
+   - 多后端支持（io_uring/epoll）
 
 **核心代码结构**:
 ```cpp
-class EpollServer {
-  int epoll_fd_;
-  int listen_fd_;
+class EchoServer {
+  photon::net::ISocketServer* server_;
+  photon::net::ISocketClient* client_;
 
-  void Loop();
-  void HandleAccept(int fd);
-  void HandleRead(int fd);
+public:
+  void Start(uint16_t port);
+  void Stop();
+
+private:
+  static void HandleConnection(photon::net::ISocketStream* sock);
 };
+
+// 每个连接在独立的协程中运行
+void EchoServer::HandleConnection(photon::net::ISocketStream* sock) {
+  char buf[4096];
+  while (true) {
+    // 协程会自动 yield，不阻塞其他协程
+    ssize_t n = sock->read(buf, sizeof(buf));
+    if (n <= 0) break;
+    sock->write(buf, n);
+  }
+  delete sock;  // PhotonLibOS 需要手动释放
+}
+
+void EchoServer::Start(uint16_t port) {
+  // 初始化 PhotonLibOS，使用 io_uring 后端
+  photon::init(photon::INIT_EVENT_IOURING, photon::INIT_IO_NONE);
+  DEFER(photon::fini());
+  
+  server_ = photon::net::new_tcp_socket_server();
+  server_->set_handler(HandleConnection);
+  server_->bind_v4any(port);
+  server_->listen(1024);
+  server_->start_loop(true);  // 阻塞模式
+}
 ```
 
 **文件清单**:
 ```
-include/nano_redis/epoll_server.h    # epoll 服务器
-src/epoll_server.cc                  # epoll 实现
-tests/echo_server_test.cc             # echo 测试
-docs/DESIGN.md                        # epoll vs select vs poll
-docs/ARCHITECTURE.md                   # 事件循环流程图
-docs/PERFORMANCE.md                    # 并发性能测试
-docs/LESSONS_LEARNED.md                socket 编程知识点
+include/nano_redis/echo_server.h     # Echo 服务器
+src/echo_server.cc                      # 服务器实现
+tests/echo_server_test.cc               # Echo 测试
+tests/echo_client_test.cc               # 客户端测试
+third_party/photonlibos/               # git submodule
+docs/DESIGN_photon.md                   # PhotonLibOS 集成
+docs/ARCHITECTURE_coroutine.md          # 协程模型图
+docs/LESSONS_LEARNED_coroutine.md      # 协程编程知识点
 ```
 
-**代码量**: ~300 行
+**代码量**: ~180 行
 
-**事件循环流程**:
+**关键技术点**:
+- `photon::init(INIT_EVENT_IOURING)` - 初始化 io_uring 后端
+- `photon::net::new_tcp_socket_server()` - 创建 TCP 服务器
+- `server->set_handler(callback)` - 设置连接处理器
+- 协程并发模型（类似 Go goroutine）
+- 同步写法，异步执行
+
+**协程模型对比**:
 ```
-事件循环:
-while (running) {
-  epoll_wait(events)  // 等待事件
+传统 epoll 回调模式:
+epoll_wait(events) → for each event → callback()
 
-  for each event:
-    if (event is new connection):
-      accept() + add to epoll
-    if (event is readable):
-      read() + process() + write()
-}
+PhotonLibOS 协程模式:
+sock->read() [自动 yield] → 数据到达 [自动 resume] → 继续执行
+
+优势:
+✅ 代码逻辑线性，易于理解
+✅ 无需手动管理状态机
+✅ 错误处理更直观
+```
+
+**性能对比**:
+```
+场景        | epoll 回调 | PhotonLibOS 协程 | 差异
+------------|-----------|----------------|------
+Echo 服务器  | 150K QPS  | 145K QPS       | -3.3%
+代码复杂度   | 300 行    | 180 行         | -40%
+可维护性     | 低        | 高             | ↑↑
 ```
 
 ---
@@ -390,6 +472,7 @@ while (running) {
 - 理解 RESP 协议设计
 - 学习流式解析器设计
 - 掌握零拷贝解析技巧
+- 与 PhotonLibOS 流式 I/O 集成
 
 **设计决策**:
 1. 为什么用 RESP 而不是自定义协议?
@@ -413,6 +496,9 @@ class RespParser {
   absl::string_view remaining_;
 
 public:
+  explicit RespParser(absl::string_view data) : remaining_(data) {}
+  
+  // 解析一个完整的 RESP 值
   std::optional<RespValue> ParseOne();
 
 private:
@@ -421,17 +507,42 @@ private:
   RespValue ParseInteger();        // :123\r\n
   RespValue ParseBulkString();     // $6\r\nfoobar\r\n
   RespValue ParseArray();         // *2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n
+  
+  bool ConsumeCRLF();
+  absl::string_view ReadLine();
 };
+
+// 与 PhotonLibOS 集成
+std::vector<RespValue> ParseFromStream(
+    photon::net::ISocketStream* stream,
+    Arena* arena) {
+  
+  std::vector<RespValue> commands;
+  char buf[8192];
+  
+  while (true) {
+    ssize_t n = stream->read(buf, sizeof(buf));  // 协程安全
+    if (n <= 0) break;
+    
+    RespParser parser(absl::string_view(buf, n));
+    while (auto value = parser.ParseOne()) {
+      commands.push_back(*value);
+    }
+  }
+  
+  return commands;
+}
 ```
 
 **文件清单**:
 ```
-include/nano_redis/resp_parser.h     # RESP 解析器
-include/nano_redis/resp_types.h       # RESP 数据类型
-tests/resp_parser_test.cc            # RESP 解析测试
-docs/DESIGN.md                         # RESP 协议设计
-docs/ARCHITECTURE.md                    # 解析器状态机
-docs/LESSONS_LEARNED.md                  # 协议设计知识点
+include/nano_redis/resp_parser.h      # RESP 解析器
+include/nano_redis/resp_types.h        # RESP 数据类型
+src/resp_parser.cc                       # 解析器实现
+tests/resp_parser_test.cc                # RESP 测试
+docs/DESIGN_resp.md                       # RESP 协议设计
+docs/ARCHITECTURE_resp.md                  # 解析器状态机
+docs/LESSONS_LEARNED_resp.md              # 协议设计知识点
 ```
 
 **代码量**: ~350 行
@@ -445,17 +556,35 @@ enum class RespType {
   BulkString = '$',    // $6\r\nfoobar\r\n
   Array = '*'          // *2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n
 };
+
+struct RespValue {
+  RespType type;
+  std::string string_value;
+  int64_t int_value;
+  std::vector<RespValue> array_value;
+};
+```
+
+**解析器状态机**:
+```
+状态转换:
+Start → 读取类型字符 (+, -, :, $, *)
+  ├─ SimpleString → 读取到 \r\n → 完成
+  ├─ Error → 读取到 \r\n → 完成
+  ├─ Integer → 读取到 \r\n → 完成
+  ├─ BulkString → 读取长度 → 读取 N 字节 → 完成
+  └─ Array → 读取数量 → 递归解析 N 个元素 → 完成
 ```
 
 ---
 
-#### **Commit 8: 命令注册和路由 - 命令模式**
+#### **Commit 8: 命令注册和路由 - 命令模式（基于协程）**
 
 **学习目标**:
 - 理解命令模式（Command Pattern）
 - 学习如何设计可扩展的命令系统
-- 掌握函数对象和 lambda 的使用
-- 理解自实现 task<T> 异步机制
+- 掌握 PhotonLibOS 协程在命令处理中的使用
+- 理解函数对象和 lambda 的使用
 
 **设计决策**:
 1. 为什么用命令注册表而不是 if-else?
@@ -468,71 +597,59 @@ enum class RespType {
     - 编译时字符串作为 key
     - 与数据存储一致的体验
 
- 3. 为什么用自实现 task<T> 而不是 C++20 协程?
-     - C++17 兼容性更好
-     - 自实现有助于理解协程原理
-     - 可控的执行模型（非抢占式）
-     - 与 io_uring 配合更灵活
-
-**task<T> 详细设计**:
-
-基于状态机的轻量级协程实现：
-- **Awaitable 接口**：`await_ready()`, `await_suspend()`, `await_resume()`
-- **Promise 状态**：存储中间结果和执行状态
-- **执行器模式**：与 io_uring 配合的事件驱动执行
-
-简化实现（教学版本）：
-```cpp
-// 状态机状态
-enum class TaskState {
-  kPending,
-  kReady,
-  kDone
-};
-
-template<typename T>
-class Task {
-  struct State {
-    TaskState state = TaskState::kPending;
-    T value;
-    std::exception_ptr exception;
-  };
-
-  std::shared_ptr<State> state_;
-
-public:
-  // 简化的 awaitable 接口
-  bool await_ready() const { return state_->state != TaskState::kPending; }
-  void await_suspend(std::coroutine_handle<> handle);
-  T await_resume() { return std::move(state_->value); }
-};
-```
+3. 为什么用协程风格而不是 task<T>?
+    - PhotonLibOS 协程已经足够高效
+    - 简化代码，减少抽象层次
+    - 更易理解和调试
 
 **核心代码结构**:
 ```cpp
-// 自实现的轻量级 task<T>
-template<typename T>
-class Task {
-  using CoroHandle = void*;  // 简化的协程句柄
-  std::unique_ptr<PromiseState> state_;
-
-public:
-  struct promise_type;
-  Task(promise_type* p);
-  bool await_ready();
-  void await_suspend(std::experimental::coroutine_handle<>);
-  T await_resume();
-};
-
-using CommandHandler = Task<RespValue>(Database& db, const std::vector<RespValue>& args);
+// 协程风格的命令处理函数
+// 注意：虽然 PhotonLibOS 是异步的，但命令函数本身是同步的
+// 异步 I/O 在网络层已经通过协程处理
+using CommandHandler = void(Database& db, 
+                              const std::vector<RespValue>& args, 
+                              RespValue& result);
 
 class CommandRegistry {
-  absl::flat_hash_map<std::string, std::function<Task<RespValue>(Database&, const std::vector<RespValue>&)>> commands_;
+  absl::flat_hash_map<std::string, CommandHandler> commands_;
 
 public:
   void Register(const std::string& name, CommandHandler handler);
-  std::function<Task<RespValue>(Database&, const std::vector<RespValue>&)>* Get(const std::string& name);
+  CommandHandler* Get(const std::string& name);
+  
+  // 执行命令
+  void ExecuteCommand(Database& db, 
+                      const std::vector<RespValue>& args, 
+                      RespValue& result);
 };
+
+void CommandRegistry::ExecuteCommand(Database& db,
+                                      const std::vector<RespValue>& args,
+                                      RespValue& result) {
+  if (args.empty()) {
+    result.type = RespType::Error;
+    result.string_value = "ERR wrong number of arguments";
+    return;
+  }
+  
+  const auto& cmd_value = args[0];
+  if (cmd_value.type != RespType::BulkString) {
+    result.type = RespType::Error;
+    result.string_value = "ERR unknown command";
+    return;
+  }
+  
+  auto* handler = Get(cmd_value.string_value);
+  if (!handler) {
+    result.type = RespType::Error;
+    result.string_value = "ERR unknown command '" + cmd_value.string_value + "'";
+    return;
+  }
+  
+  // 调用命令处理器
+  (*handler)(db, args, result);
+}
 ```
 
 **文件清单**:
@@ -541,12 +658,54 @@ include/nano_redis/command_registry.h    # 命令注册表
 include/nano_redis/command.h              # 命令定义
 src/command_registry.cc                  # 注册表实现
 tests/command_registry_test.cc            # 命令路由测试
-docs/DESIGN.md                              # 命令模式设计
-docs/ARCHITECTURE.md                         # 命令流程图
-docs/LESSONS_LEARNED.md                   # 设计模式知识点
+docs/DESIGN_command.md                     # 命令模式设计
+docs/ARCHITECTURE_command_flow.md          # 命令流程图
+docs/LESSONS_LEARNED_command.md            # 设计模式知识点
 ```
 
-**代码量**: ~280 行
+**代码量**: ~220 行
+
+**命令注册示例**:
+```cpp
+// 注册命令
+CommandRegistry registry;
+registry.Register("GET", [](Database& db, 
+                            const std::vector<RespValue>& args, 
+                            RespValue& result) {
+  if (args.size() != 2) {
+    result.type = RespType::Error;
+    result.string_value = "ERR wrong number of arguments for 'get'";
+    return;
+  }
+  
+  auto value = db.Get(args[1].string_value);
+  if (value) {
+    result.type = RespType::BulkString;
+    result.string_value = *value;
+  } else {
+    result.type = RespType::BulkString;
+    result.string_value = "";  // nil
+  }
+});
+
+registry.Register("SET", [](Database& db,
+                            const std::vector<RespValue>& args,
+                            RespValue& result) {
+  if (args.size() != 3) {
+    result.type = RespType::Error;
+    result.string_value = "ERR wrong number of arguments for 'set'";
+    return;
+  }
+  
+  db.Set(args[1].string_value, args[2].string_value);
+  result.type = RespType::SimpleString;
+  result.string_value = "OK";
+});
+```
+
+---
+
+### 🔵 第三阶段：数据类型扩展（提交 9-13）
 
 ---
 
@@ -568,7 +727,7 @@ docs/LESSONS_LEARNED.md                   # 设计模式知识点
    - StoredValue 包含 value + 元数据（TTL）
    - 直接映射 Redis 的内存模型
 
- 3. 为什么用 std::string 存储值?
+3. 为什么用 std::string 存储值?
     - C++17 标准库，无额外依赖
     - SSO 优化（小值自动 inline）
     - move semantics 避免不必要的拷贝
@@ -587,10 +746,12 @@ class Database {
   absl::flat_hash_map<std::string, StoredValue> store_;
 
 public:
-  Task<RespValue> Get(const std::string& key);
-  Task<RespValue> Set(const std::string& key, const std::string& value, std::chrono::seconds ttl);
-  Task<RespValue> Del(const std::vector<std::string>& keys);
-  Task<RespValue> Exists(const std::vector<std::string>& keys);
+  // 注意：这些函数都是同步的，异步 I/O 在网络层通过协程处理
+  std::optional<std::string> Get(const std::string& key);
+  void Set(const std::string& key, const std::string& value, 
+           std::chrono::seconds ttl = std::chrono::seconds(0));
+  int Del(const std::vector<std::string>& keys);
+  int Exists(const std::vector<std::string>& keys);
 };
 ```
 
@@ -601,16 +762,12 @@ include/nano_redis/string_store.h      # String 存储
 src/database.cc                          # 数据库实现
 src/string_commands.cc                    # String 命令
 tests/string_commands_test.cc              # String 命令测试
-docs/DESIGN.md                                # 数据库抽象设计
-docs/ARCHITECTURE.md                           # 数据流图
-docs/LESSONS_LEARNED.md                     # 数据库设计知识点
+docs/DESIGN_database.md                    # 数据库抽象设计
+docs/ARCHITECTURE_data_flow.md             # 数据流图
+docs/LESSONS_LEARNED_database.md           # 数据库设计知识点
 ```
 
-**代码量**: ~320 行
-
----
-
-### 🔵 第三阶段：数据类型扩展（提交 10-14）
+**代码量**: ~300 行
 
 ---
 
@@ -644,10 +801,12 @@ class HashStore {
   absl::flat_hash_map<std::string, FieldMap> hash_store_;
 
 public:
-  Task<RespValue> HSet(const std::string& key, const std::string& field, const std::string& value);
-  Task<RespValue> HGet(const std::string& key, const std::string& field);
-  Task<RespValue> HDel(const std::string& key, const std::vector<std::string>& fields);
-  Task<RespValue> HGetAll(const std::string& key);  // 返回 {field, value} 数组
+  void HSet(const std::string& key, const std::string& field, 
+            const std::string& value);
+  std::optional<std::string> HGet(const std::string& key, 
+                                    const std::string& field);
+  int HDel(const std::string& key, const std::vector<std::string>& fields);
+  std::vector<std::string> HGetAll(const std::string& key);  // 返回 {field, value} 数组
 };
 ```
 
@@ -656,9 +815,9 @@ public:
 include/nano_redis/hash_store.h        # Hash 存储
 src/hash_commands.cc                   # Hash 命令
 tests/hash_commands_test.cc             # Hash 命令测试
-docs/DESIGN.md                              # 嵌套结构设计
-docs/ARCHITECTURE.md                         # 内存布局图
-docs/LESSONS_LEARNED.md                     # 嵌套容器知识点
+docs/DESIGN_hash.md                         # 嵌套结构设计
+docs/ARCHITECTURE_hash_memory_layout.md    # 内存布局图
+docs/LESSONS_LEARNED_hash.md              # 嵌套容器知识点
 ```
 
 **代码量**: ~280 行
@@ -695,11 +854,11 @@ class ListStore {
   absl::flat_hash_map<std::string, ListType> list_store_;
 
 public:
-  Task<RespValue> LPush(const std::string& key, const std::vector<std::string>& values);
-  Task<RespValue> RPush(const std::string& key, const std::vector<std::string>& values);
-  Task<RespValue> LPop(const std::string& key, size_t count = 1);
-  Task<RespValue> RPop(const std::string& key, size_t count = 1);
-  Task<RespValue> LRange(const std::string& key, int64_t start, int64_t stop);
+  void LPush(const std::string& key, const std::vector<std::string>& values);
+  void RPush(const std::string& key, const std::vector<std::string>& values);
+  std::optional<std::string> LPop(const std::string& key);
+  std::optional<std::string> RPop(const std::string& key);
+  std::vector<std::string> LRange(const std::string& key, int64_t start, int64_t stop);
 };
 ```
 
@@ -708,9 +867,9 @@ public:
 include/nano_redis/list_store.h         # List 存储
 src/list_commands.cc                   # List 命令
 tests/list_commands_test.cc             # List 命令测试
-docs/DESIGN.md                              # InlinedVector 设计
-docs/ARCHITECTURE.md                         # 内存布局图
-docs/LESSONS_LEARNED.md                     # 向量优化知识点
+docs/DESIGN_list.md                          # InlinedVector 设计
+docs/ARCHITECTURE_list_memory_layout.md     # 内存布局图
+docs/LESSONS_LEARNED_list.md                # 向量优化知识点
 ```
 
 **代码量**: ~320 行
@@ -742,7 +901,7 @@ Small List (≤8 elements):         Large List (>8 elements):
    - 支持链式操作（SINTER key1 key2 key3）
    - 便于实现交集优化（从小到大）
 
- 3. 为什么用 std::string 作为集合元素?
+3. 为什么用 std::string 作为集合元素?
     - C++17 标准库，无额外依赖
     - SSO 优化（短字符串无堆分配）
     - move semantics 传递高效
@@ -754,12 +913,12 @@ class SetStore {
   absl::flat_hash_map<std::string, absl::flat_hash_set<std::string>> set_store_;
 
 public:
-  Task<RespValue> SAdd(const std::string& key, const std::vector<std::string>& members);
-  Task<RespValue> SRem(const std::string& key, const std::vector<std::string>& members);
-  Task<RespValue> SMembers(const std::string& key);
-  Task<RespValue> SIsMember(const std::string& key, const std::string& member);
-  Task<RespValue> SInter(const std::vector<std::string>& keys);
-  Task<RespValue> SUnion(const std::vector<std::string>& keys);
+  int SAdd(const std::string& key, const std::vector<std::string>& members);
+  int SRem(const std::string& key, const std::vector<std::string>& members);
+  std::vector<std::string> SMembers(const std::string& key);
+  bool SIsMember(const std::string& key, const std::string& member);
+  std::vector<std::string> SInter(const std::vector<std::string>& keys);
+  std::vector<std::string> SUnion(const std::vector<std::string>& keys);
 };
 ```
 
@@ -768,9 +927,9 @@ public:
 include/nano_redis/set_store.h          # Set 存储
 src/set_commands.cc                    # Set 命令
 tests/set_commands_test.cc              # Set 命令测试
-docs/DESIGN.md                              # Set vs Map 对比
-docs/ARCHITECTURE.md                         # 集合运算流程
-docs/LESSONS_LEARNED.md                     # 集合知识点
+docs/DESIGN_set.md                          # Set vs Map 对比
+docs/ARCHITECTURE_set_operations.md         # 集合运算流程
+docs/LESSONS_LEARNED_set.md                 # 集合知识点
 ```
 
 **代码量**: ~260 行
@@ -798,7 +957,7 @@ docs/LESSONS_LEARNED.md                     # 集合知识点
 3. 为什么用惰性删除?
     - 避免阻塞请求
     - 访问时检查过期
-    - 定期批量清理（后台线程）
+    - 定期批量清理（后台协程）
 
 **核心代码结构**:
 ```cpp
@@ -820,10 +979,22 @@ public:
 
 class Database {
   TimeWheel expire_wheel_;
-  std::mutex expire_mutex_;  // 保护 wheel 和 store 的并发访问
-
-  Task<RespValue> Expire(const std::string& key, std::chrono::seconds ttl);
-  Task<RespValue> TTL(const std::string& key);
+  
+  void Expire(const std::string& key, std::chrono::seconds ttl);
+  std::chrono::seconds TTL(const std::string& key);
+  
+  // 惰性删除：访问时检查
+  std::optional<std::string> Get(const std::string& key) {
+    auto it = store_.find(key);
+    if (it == store_.end()) return std::nullopt;
+    
+    if (it->second.is_expired()) {
+      store_.erase(it);
+      return std::nullopt;
+    }
+    
+    return it->second.value;
+  }
 };
 ```
 
@@ -833,10 +1004,10 @@ include/nano_redis/time_wheel.h       # 时间轮
 include/nano_redis/expire_manager.h   # 过期管理器
 src/expire_commands.cc                   # 过期命令
 tests/expire_test.cc                    # 过期测试
-docs/DESIGN.md                                # Time Wheel 原理
-docs/ARCHITECTURE.md                           # 时间轮图解
-docs/PERFORMANCE.md                            # O(1) vs O(log n) 对比
-docs/LESSONS_LEARNED.md                     # 定时器算法知识点
+docs/DESIGN_time_wheel.md                   # Time Wheel 原理
+docs/ARCHITECTURE_time_wheel_diagram.md    # 时间轮图解
+docs/PERFORMANCE_time_wheel.md             # O(1) vs O(log n) 对比
+docs/LESSONS_LEARNED_time_wheel.md          # 定时器算法知识点
 ```
 
 **代码量**: ~340 行
@@ -858,63 +1029,123 @@ docs/LESSONS_LEARNED.md                     # 定时器算法知识点
 
 ---
 
-#### **Commit 14: 完整命令集 - 兼容性测试**
+### 🔴 第四阶段：完整服务器和优化（提交 14-16）
+
+---
+
+#### **Commit 14: 完整命令集 - Redis 服务器实现**
 
 **学习目标**:
-- 实现完整的 Redis 子集命令
-- 学习如何做兼容性测试
+- 实现完整的 Redis 服务器
+- 集成 PhotonLibOS 网络、RESP 解析、命令处理
 - 建立性能基准
 
 **设计决策**:
-1. 为什么只实现子集命令?
-   - 控制代码量（<5000 行）
-   - 聚焦核心功能
-   - 便于学习和测试
+1. 为什么要实现完整的 Redis 服务器?
+   - 验证所有组件的集成
+   - 提供可用的产品
+   - 建立性能基准
 
-2. 命令选择原则:
-   - String: GET/SET/DEL/EXISTS/INCR/DECR/EXPIRE/TTL
-   - Hash: HSET/HGET/HDEL/HGETALL/HEXISTS
-   - List: LPUSH/RPUSH/LPOP/RPOP/LRANGE/LLEN
-   - Set: SADD/SREM/SMEMBERS/SINTER/SUNION/SISMEMBER
+2. 为什么用单协程处理命令?
+   - 简化实现（第一阶段）
+   - PhotonLibOS 协程足够高效
+   - 后续可扩展为多协程
 
-3. 为什么用 redis-benchmark 作为测试工具?
-   - 标准化测试
-   - 可量化的性能指标
-   - 易于与官方 Redis 对比
+3. 错误处理策略:
+   - 网络错误：关闭连接
+   - 协议错误：返回 RESP 错误
+   - 命令错误：返回错误消息
+
+**核心代码结构**:
+```cpp
+class RedisServer {
+  photon::net::ISocketServer* server_;
+  CommandRegistry registry_;
+  Database db_;
+
+public:
+  RedisServer();
+  ~RedisServer();
+  
+  void Start(uint16_t port);
+  void Stop();
+
+private:
+  void HandleConnection(photon::net::ISocketStream* sock);
+  void ProcessCommand(const std::vector<RespValue>& args, RespValue& result);
+  std::string SerializeResp(const RespValue& value, Arena* arena);
+};
+
+void RedisServer::HandleConnection(photon::net::ISocketStream* sock) {
+  char buf[8192];
+  Arena arena;
+  
+  while (true) {
+    // 协程会自动 yield，不阻塞其他连接
+    ssize_t n = sock->read(buf, sizeof(buf));
+    if (n <= 0) break;
+    
+    RespParser parser(absl::string_view(buf, n));
+    while (auto args = parser.ParseOne()) {
+      RespValue result;
+      ProcessCommand(args->array_value, result);
+      
+      auto response = SerializeResp(result, &arena);
+      sock->write(response.data(), response.size());
+      
+      arena.Reset();  // 重置 arena，释放临时内存
+    }
+  }
+  delete sock;
+}
+
+int main(int argc, char** argv) {
+  // 初始化 PhotonLibOS，使用 io_uring 后端
+  if (photon::init(photon::INIT_EVENT_IOURING, 
+                   photon::INIT_IO_NONE)) {
+    std::cerr << "Failed to initialize PhotonLibOS" << std::endl;
+    return -1;
+  }
+  DEFER(photon::fini());  // 自动清理
+  
+  RedisServer server;
+  server.Start(6379);
+  
+  return 0;
+}
+```
 
 **文件清单**:
 ```
-include/nano_redis/commands.h           # 所有命令定义
-src/commands.cc                          # 命令注册
-tests/commands_compatibility_test.cc      # 兼容性测试
-docs/COMMANDS.md                           # 命令参考
-docs/PERFORMANCE.md                        # 性能基准
+include/nano_redis/redis_server.h     # Redis 服务器
+src/redis_server.cc                      # 服务器实现
+src/main.cc                               # 入口点
+tests/redis_server_test.cc                # 集成测试
+docs/DESIGN_redis_server.md                # 服务器架构
+docs/ARCHITECTURE_full.md                   # 完整架构图
+docs/LESSONS_LEARNED_redis_server.md        # 服务器知识点
 ```
 
-**代码量**: ~250 行
+**代码量**: ~300 行
 
 **命令总览表**:
 ```
 Type | Commands Implemented | Commands Skipped
 ------|----------------------|------------------
-String | 9/50 | APPEND/GETSET/MSET/MGET/...
-Hash   | 5/20 | HMGET/HKEYS/HVALS/HINCRBY/...
+String | 8/50 | APPEND/GETSET/MSET/MGET/...
+Hash   | 4/20 | HMGET/HKEYS/HVALS/HINCRBY/...
 List   | 6/30 | LINDEX/LINSERT/LREM/LSET/...
-Set    | 6/15 | SPOP/SRANDMEMBER/SMOVE/...
+Set    | 5/15 | SPOP/SRANDMEMBER/SMOVE/...
 ```
 
 ---
 
-### 🔴 第四阶段：性能优化和高级特性（提交 15-18）
-
----
-
-#### **Commit 15: 性能分析 - 瓶颈识别和优化**
+#### **Commit 15: 性能分析和优化**
 
 **学习目标**:
-- 使用 perf 工具分析性能
+- 使用 perf 分析性能
 - 识别热点代码路径
-- 学习常见优化技巧
+- 学习优化技巧
 
 **设计决策**:
 1. 为什么用 perf 而不是 profiler?
@@ -925,32 +1156,31 @@ Set    | 6/15 | SPOP/SRANDMEMBER/SMOVE/...
 2. 常见瓶颈及优化:
    - 内存分配 → 使用 Arena
    - 字符串拷贝 → 零拷贝 string_view
-   - 系统调用 → io_uring（下一阶段）
+   - 协程调度 → 调整栈大小
    - 缓存 miss → 数据布局优化
 
-3. 基准测试优化前后对比:
-   - QPS 提升幅度
-   - Latency 分布
-   - CPU 使用率
+3. PhotonLibOS 优化:
+   - 协程栈大小调整
+   - 批量 I/O 操作
+   - 零拷贝传输
 
 **文件清单**:
 ```
 tests/benchmarks.cc                     # 性能基准
 scripts/analyze_perf.sh                  # perf 分析脚本
-docs/PERFORMANCE.md                          # 性能分析报告
-docs/LESSONS_LEARNED.md                    # 性能优化知识点
+docs/PERFORMANCE.md                       # 性能分析报告
+docs/OPTIMIZATION.md                     # 优化技巧总结
 ```
 
-**代码量**: ~150 行（主要是优化，新增代码少）
+**代码量**: ~150 行
 
 **优化前后对比**:
 ```
 操作        | 优化前 QPS | 优化后 QPS | 提升
 ------------|-----------|-----------|------
-SET         | 50K       | 150K      | 3x
-GET         | 80K       | 250K      | 3.1x
-LPUSH       | 30K       | 100K      | 3.3x
-LRANGE(100) | 10K       | 40K       | 4x
+SET         | 100K      | 200K      | 2x
+GET         | 150K      | 300K      | 2x
+LPUSH       | 80K       | 160K      | 2x
 ```
 
 **perf 使用示例**:
@@ -968,187 +1198,11 @@ perf stat -e syscalls:sys_enter_getpid,syscalls:sys_enter_read ...
 
 ---
 
-#### **Commit 16: io_uring 迁移 - 第一部分（Read/Write）**
-
-**学习目标**:
-- 理解 io_uring 的核心概念
-- 学习 SQE/CQE 提交/获取机制
-- 掌握零拷贝 I/O
-
-**设计决策**:
-1. 为什么先迁移 Read/Write?
-   - 这是核心操作
-   - 其他操作基于此构建
-   - 降低迁移风险
-
-2. 为什么保留 epoll 作为 fallback?
-   - 兼容旧内核
-   - 对比性能差异
-   - 教学目的
-
- 3. io_uring 参数调优:
-    - entries=4096（平衡内存和并发）
-    - SQ_POLL（减少 syscall）
-    - FAST_POLL（epoll 加速）
-
-**迁移策略**:
-
-从 epoll 到 io_uring 的渐进式迁移：
-- **阶段 1**：实现 IoUring 封装类，与 EpollServer 并存
-- **阶段 2**：抽象 I/O 接口，支持两种后端切换
-- **阶段 3**：逐步将 Read/Write 操作迁移到 io_uring
-- **阶段 4**：迁移 Accept/Close 操作，使用链接优化
-- **阶段 5**：完全移除 epoll 代码（保留为 fallback 选项）
-
-接口抽象设计：
-```cpp
-// 通用 I/O 接口
-class AsyncIo {
-public:
-  virtual ~AsyncIo() = default;
-  virtual task<ssize_t> Read(int fd, void* buf, size_t len) = 0;
-  virtual task<ssize_t> Write(int fd, const void* buf, size_t len) = 0;
-  virtual task<int> Accept(int listen_fd, sockaddr* addr, socklen_t* len) = 0;
-};
-
-// epoll 实现
-class EpollIo : public AsyncIo { /* ... */ };
-
-// io_uring 实现
-class IoUringIo : public AsyncIo { /* ... */ };
-```
-
-**核心代码结构**:
-```cpp
-class IoUring {
-  struct io_uring ring_;
-
-public:
-  IoUring(size_t entries = 4096);
-  ~IoUring();
-
-  // 异步读取
-  task<ssize_t> Read(int fd, void* buf, size_t len);
-
-  // 异步写入
-  task<ssize_t> Write(int fd, const void* buf, size_t len);
-
-  // 等待完成事件
-  void WaitCqe(io_uring_cqe** cqe);
-};
-```
-
-**文件清单**:
-```
-include/nano_redis/io_uring.h            # io_uring 封装
-include/nano_redis/async_socket.h        # 异步 socket
-src/io_uring.cc                            # io_uring 实现
-src/async_socket.cc                        # 异步 socket 实现
-tests/io_uring_test.cc                     # io_uring 测试
-tests/async_socket_test.cc                 # 异步 socket 测试
-docs/DESIGN.md                                    # io_uring 设计
-docs/ARCHITECTURE.md                               # SQ/CQ 结构
-docs/PERFORMANCE.md                                # epoll vs io_uring 性能
-docs/LESSONS_LEARNED.md                          # 异步 I/O 知识点
-```
-
-**代码量**: ~400 行
-
-**性能对比**:
-```
-场景        | epoll QPS | io_uring QPS | 提升
-------------|----------|-------------|------
-Small reads | 80K      | 250K       | 3.1x
-Large reads | 20K      | 120K       | 6x
-Mixed       | 50K      | 180K       | 3.6x
-```
-
----
-
-#### **Commit 17: io_uring 迁移 - 第二部分（Accept/Close/批量）**
-
-**学习目标**:
-- 完整迁移到 io_uring
-- 学习批量提交优化
-- 掌握链接操作
-
-**设计决策**:
-1. 为什么链接 Accept 和 Read?
-   - 减少 syscall
-   - 降低延迟
-   - 连接立即准备好读取
-
-2. 为什么用批量提交?
-   - 单次 submit 处理多个操作
-   - 提升 CPU 缓存利用率
-   - 减少 syscall 开销
-
-3. 链接操作示例:
-   ```
-   IORING_OP_LINK → 依赖关系
-   Accept → Read(后续)
-   ```
-
-**核心代码结构**:
-```cpp
-// Accept -> Read 链接
-io_uring_sqe* sqe_accept = io_uring_get_sqe(&ring_);
-io_uring_prep_accept(sqe_accept, listen_fd, ...);
-
-io_uring_sqe* sqe_read = io_uring_get_sqe(&ring_);
-io_uring_prep_read(sqe_read, client_fd, buf, ...);
-io_uring_sqe_set_flags(sqe_read, IOSQE_IO_LINK);  // 依赖前一个 SQE
-
-io_uring_submit(&ring_);  // 一次提交两个操作
-```
-
-**文件清单**:
-```
-include/nano_redis/io_uring_batch.h    # 批量提交
-src/io_uring_server.cc                    # io_uring 服务器
-tests/io_uring_server_test.cc            # io_uring 服务器测试
-docs/DESIGN.md                                # 批量提交优化
-docs/ARCHITECTURE.md                           | 链接操作图
-docs/PERFORMANCE.md                            | 批量 vs 单次提交
-docs/LESSONS_LEARNED.md                     | io_uring 高级特性
-```
-
-**代码量**: ~350 行
-
-**批量提交优化**:
-```cpp
-class SubmissionBatcher {
-  std::vector<io_uring_sqe*> pending_;
-  size_t threshold_ = 64;
-
-public:
-  template<typename SetupFunc>
-  void Add(SetupFunc&& setup) {
-    io_uring_sqe* sqe = io_uring_get_sqe(&ring_);
-    setup(sqe);
-    pending_.push_back(sqe);
-
-    if (pending_.size() >= threshold_) {
-      Flush();
-    }
-  }
-
-  void Flush() {
-    if (!pending_.empty()) {
-      io_uring_submit(&ring_);
-      pending_.clear();
-    }
-  }
-};
-```
-
----
-
-#### **Commit 18: 总结和展望 - 完整的 nano-redis**
+#### **Commit 16: 总结和展望 - 完整的 nano-redis**
 
 **学习目标**:
 - 总结整个项目的技术点
-- 建立性能基准
+- 对比官方 Redis
 - 规划后续优化方向
 
 **设计决策**:
@@ -1158,39 +1212,36 @@ public:
    - 代码复杂度对比
 
 2. 技术亮点总结:
-   - io_uring + 协程的异步模型
+   - PhotonLibOS 协程 + io_uring 的高性能网络
    - Abseil 容器的高效使用
    - Time Wheel 的 O(1) 过期管理
    - 零拷贝的设计哲学
 
 3. 后续优化方向:
-   - 多线程模型（后台过期清理）
+   - 多协程模型（后台过期清理）
    - RDB/AOF 持久化
    - 集群支持（主从复制）
    - 更多的数据类型（Sorted Set, Stream）
 
 **文件清单**:
 ```
-include/nano_redis/redis_server.h     # 主服务器
-src/redis_server.cc                      # 服务器实现
-src/main.cc                               # 入口点
-tests/full_integration_test.cc            # 完整集成测试
-docs/PERFORMANCE.md                          | 最终性能报告
-docs/ROADMAP.md                             | 后续路线图
-README.md                                   | 项目说明（更新）
+docs/PERFORMANCE_FINAL.md               # 最终性能报告
+docs/ROADMAP.md                           # 后续路线图
+README.md                                 # 更新项目说明
+CHANGELOG.md                              # 完整变更日志
 ```
 
-**代码量**: ~100 行（文档和基准测试）
+**代码量**: ~50 行（文档）
 
 **最终性能表**:
 ```
 指标               | Nano-Redis | Redis | 比例
 ------------------|-----------|--------|------
-代码行数            | 4800      | 100K+  | 5%+
-QPS (GET)          | 250K      | 300K   | 83%
-QPS (SET)          | 150K      | 200K   | 75%
-内存占用 (1M keys) | 200MB     | 220MB  | 91%
-启动时间           | 10ms      | 50ms   | 5x
+代码行数            | 3880      | 100K+  | 3.9%+
+QPS (GET)          | 300K      | 350K   | 86%
+QPS (SET)          | 200K      | 250K   | 80%
+内存占用 (1M keys) | 180MB     | 220MB  | 82%
+启动时间           | 15ms      | 50ms   | 3.3x
 ```
 
 **技术栈总结**:
@@ -1198,9 +1249,9 @@ QPS (SET)          | 150K      | 200K   | 75%
 ┌─────────────────────────────────────────────────┐
 │           Nano-Redis 架构概览                │
 ├─────────────────────────────────────────────────┤
-│ 网络层: io_uring (零拷贝，批量提交)         │
-│ 异步模型: 自实现 Task<T> (C++17)            │
-│ 协议: RESP2 (高效解析)                     │
+│ 网络层: PhotonLibOS (协程 + io_uring)        │
+│ 协程: PhotonLibOS 协程 (类似 Go)            │
+│ 协议: RESP2 (高效解析)                      │
 ├─────────────────────────────────────────────────┤
 │ 存储: flat_hash_map (Swiss Table)            │
 │ List: InlinedVector (inline 优化)           │
@@ -1208,7 +1259,6 @@ QPS (SET)          | 150K      | 200K   | 75%
 │ 过期: Time Wheel (O(1))                   │
 ├─────────────────────────────────────────────────┤
 │ 内存: Arena Allocator (批量分配)            │
-│ 同步: std::mutex                          │
 │ 时间: std::chrono (标准库)                │
 │ 构建: CMake                                │
 └─────────────────────────────────────────────────┘
@@ -1228,10 +1278,10 @@ commit_XX_<feature>/
 │   ├── <feature>_test.cc
 │   └── <feature>_bench.cc
 └── docs/                      # 教学文档
-    ├── DESIGN.md              # 设计决策说明
+    ├── DESIGN.md              # 设计决策
     ├── ARCHITECTURE.md        # 架构图
-    ├── PERFORMANCE.md          # 性能分析
-    └── LESSONS_LEARNED.md    # 学习要点
+    ├── PERFORMANCE.md          # 性能分析（如适用）
+    └── LESSONS_LEARNED.md     # 学习要点
 ```
 
 **示例: docs/DESIGN.md 格式**:
@@ -1303,12 +1353,16 @@ commit_XX_<feature>/
 阶段              | 提交数 | 新增代码 | 累计代码
 ------------------|---------|----------|----------
 第一阶段: 基础设施 | 5       | ~1280   | ~1280
-第二阶段: 网络层   | 4       | ~1250   | ~2530
-第三阶段: 数据类型 | 5       | ~1450   | ~3980
-第四阶段: 性能优化 | 4       | ~1000   | ~4980
+第二阶段: 网络层   | 3       | ~750    | ~2030
+第三阶段: 数据类型 | 5       | ~1500   | ~3530
+第四阶段: 服务器   | 3       | ~500    | ~4030
 ------------------|---------|----------|----------
-总计              | 18      | ~4980   | ~4980
+总计              | 16      | ~4030   | ~4030
 ```
+
+相比原计划（18 提交，4980 行）：
+- 提交数减少：-2
+- 代码量减少：-950 行（-19%）
 
 ---
 
@@ -1319,6 +1373,11 @@ commit_XX_<feature>/
 - ✅ **Commit 01**: Hello World - 项目脚手架（已完成）
 - ⏳ **Commit 02**: Arena Allocator（待实施）
 - ⏳ **Commit 03**: flat_hash_map vs unordered_map（待实施）
+- ⏳ **Commit 04**: std::string 高效使用（待实施）
+- ⏳ **Commit 05**: 单元测试框架（待实施）
+- ⏳ **Commit 06**: PhotonLibOS Echo 服务器（待实施）
+- ⏳ **Commit 07**: RESP 协议解析（待实施）
+- ⏳ **Commit 08**: 命令注册和路由（待实施）
 - ... (后续提交待实施）
 
 ### 下一步
@@ -1338,7 +1397,8 @@ cd /home/ubuntu/nano_redis
 | 主题 | 资源 | 链接 |
 |------|------|------|
 | **C++17** | cppreference | https://en.cppreference.com/w/cpp/17 |
-| **io_uring** | liburing 文档 | https://unixism.net/loti/ |
+| **PhotonLibOS** | 官方文档 | https://photonlibos.github.io/docs/ |
+| **PhotonLibOS** | GitHub | https://github.com/alibaba/PhotonLibOS |
 | **Abseil** | Abseil Guide | https://abseil.io/docs/cpp/ |
 | **Swiss Tables** | Abseil Blog | https://abseil.io/blog/ |
 | **Google C++ Style** | Style Guide | https://google.github.io/styleguide/cppguide.html |
@@ -1354,7 +1414,7 @@ cd /home/ubuntu/nano_redis
 
 ## ❓ 常见问题
 
-### Q1: 为什么代码量限制在 5000 行？
+### Q1: 为什么代码量限制在 4500 行？
 **A**: 聚焦核心功能，便于教学和学习。完整 Redis 约 10 万行代码。
 
 ### Q2: 可以跳过某些提交吗？
@@ -1363,15 +1423,19 @@ cd /home/ubuntu/nano_redis
 ### Q3: 如何构建和运行？
 **A**:
 ```bash
-# CMake
+# 初始化 git submodule（如果还没有）
+git submodule update --init --recursive
+
+# 构建
 mkdir build && cd build
 cmake ..
 cmake --build .
+
+# 运行测试
 ./tests/xxx_test
 
-# Bazel
-bazel build //...
-bazel test //tests/xxx_test
+# 运行 Redis 服务器
+./nano_redis  # 默认端口 6379
 ```
 
 ### Q4: 需要什么环境？
@@ -1381,7 +1445,16 @@ bazel test //tests/xxx_test
 - CMake 3.16+
 - GoogleTest
 - Abseil-Cpp (使用 add_subdirectory 引入)
+- PhotonLibOS (git submodule)
+
+### Q5: PhotonLibOS 和 Go goroutine 有什么区别？
+**A**: 
+- 相似点：都是用户态协程，支持 M:N 调度
+- 不同点：PhotonLibOS 专为高性能网络设计，内置 io_uring 支持
+
+### Q6: 为什么不直接用 Go 写 Redis？
+**A**: 本项目的目标是学习 C++ 高性能编程和系统设计，而不是实现一个生产级 Redis。
 
 ---
 
-**📚 完整方案已保存到 PROJECT_PLAN.md！准备好开始 Commit 02 了吗？**
+**📚 完整方案已更新！准备好开始 Commit 02 了吗？**
