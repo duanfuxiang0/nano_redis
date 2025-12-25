@@ -70,12 +70,16 @@ target_link_libraries(version_test nano_redis test_utils)
 add_executable(arena_test tests/arena_test.cc)
 target_link_libraries(arena_test nano_redis test_utils)
 
+add_executable(echo_server_test tests/echo_server_test.cc)
+target_link_libraries(echo_server_test nano_redis test_utils)
+
 add_executable(test_utils_example_test tests/test_utils_example_test.cc)
 target_link_libraries(test_utils_example_test nano_redis test_utils)
 
 enable_testing()
 add_test(NAME version_test COMMAND version_test)
 add_test(NAME arena_test COMMAND arena_test)
+add_test(NAME echo_server_test COMMAND echo_server_test)
 add_test(NAME test_utils_example_test COMMAND test_utils_example_test)
 
 # 基准测试（可选）
