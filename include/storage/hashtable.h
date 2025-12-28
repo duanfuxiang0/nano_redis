@@ -5,7 +5,7 @@
 #include <cassert>
 #include <cstring>
 #include <memory>
-#include <cstddef>
+#include <cstdint>
 
 template <typename K, typename V>
 class HashTable {
@@ -13,11 +13,11 @@ private:
     struct Node {
         K key;
         V value;
-        size_t hash;
+        uint64_t hash;
         Node *next;
 
         template <typename KeyArg, typename ValArg>
-        Node(KeyArg &&k, ValArg &&v, size_t h, Node *n)
+        Node(KeyArg &&k, ValArg &&v, uint64_t h, Node *n)
             : key(std::forward<KeyArg>(k)),
               value(std::forward<ValArg>(v)),
               hash(h),
@@ -25,10 +25,10 @@ private:
     };
 
 public:
-    explicit HashTable(size_t initial_cap = 4)
-        : size_(0), length_(0), list_(nullptr)
+    explicit HashTable(uint64_t initial_cap = 4)
+        : list_(nullptr), length_(0), size_(0)
     {
-        size_t min_cap = 4;
+        uint64_t min_cap = 4;
         while (min_cap < initial_cap) {
             min_cap *= 2;
         }
@@ -68,7 +68,12 @@ public:
 
     template <typename KeyArg, typename ValArg>
     void Insert(KeyArg &&key, ValArg &&value) {
-        size_t hash = Hash(key);
+        if (list_ == nullptr || length_ == 0) {
+            uint64_t min_cap = 4;
+            Resize(min_cap);
+        }
+        
+        uint64_t hash = Hash(key);
         Node **ptr = FindPointer(key, hash);
 
         if (*ptr != nullptr) {
@@ -85,19 +90,19 @@ public:
     }
 
     V* Find(const K &key) {
-        size_t hash = Hash(key);
+        uint64_t hash = Hash(key);
         Node **ptr = FindPointer(key, hash);
         return (*ptr) ? &((*ptr)->value) : nullptr;
     }
 
     const V *Find(const K &key) const {
-        size_t hash = Hash(key);
+        uint64_t hash = Hash(key);
         Node *const *ptr = const_cast<HashTable *>(this)->FindPointer(key, hash);
         return (*ptr) ? &((*ptr)->value) : nullptr;
     }
 
     bool Erase(const K &key) {
-        size_t hash = Hash(key);
+        uint64_t hash = Hash(key);
         Node **ptr = FindPointer(key, hash);
         Node *target = *ptr;
 
@@ -114,7 +119,7 @@ public:
         if (!list_) {
             return;
         }
-        for (size_t i = 0; i < length_; ++i) {
+        for (uint64_t i = 0; i < length_; ++i) {
             Node *node = list_[i];
             while (node) {
                 Node *next = node->next;
@@ -126,11 +131,11 @@ public:
         size_ = 0;
     }
 
-    size_t Size() const {
+    uint64_t Size() const {
         return size_;
     }
 
-    size_t BucketCount() const {
+    uint64_t BucketCount() const {
         return length_;
     }
 
@@ -139,7 +144,7 @@ public:
         if (!list_) {
             return;
         }
-        for (size_t i = 0; i < length_; ++i) {
+        for (uint64_t i = 0; i < length_; ++i) {
             Node *node = list_[i];
             while (node) {
                 func(node->key, node->value);
@@ -149,7 +154,7 @@ public:
     }
 
 private:
-    Node **FindPointer(const K &key, size_t hash) const {
+    Node **FindPointer(const K &key, uint64_t hash) const {
         Node **ptr = &list_[hash & (length_ - 1)];
 
         while (*ptr != nullptr &&
@@ -159,35 +164,40 @@ private:
         return ptr;
     }
 
-    void Resize(size_t new_length) {
-        Node **new_buckets = new Node *[new_length]();
+    void Resize(uint64_t new_length) {
+        if (list_ == nullptr) {
+            list_ = new Node *[new_length]();
+            length_ = new_length;
+        } else {
+            Node **new_buckets = new Node *[new_length]();
 
-        size_t count = 0;
-        for (size_t i = 0; i < length_; ++i) {
-            Node *h = list_[i];
-            while (h != nullptr) {
-                Node *next = h->next;
+            uint64_t count = 0;
+            for (uint64_t i = 0; i < length_; ++i) {
+                Node *h = list_[i];
+                while (h != nullptr) {
+                    Node *next = h->next;
 
-                uint32_t idx = h->hash & (new_length - 1);
+                    uint32_t idx = h->hash & (new_length - 1);
 
-                h->next = new_buckets[idx];
-                new_buckets[idx] = h;
+                    h->next = new_buckets[idx];
+                    new_buckets[idx] = h;
 
-                h = next;
-                count++;
+                    h = next;
+                    count++;
+                }
             }
-        }
 
-        delete[] list_;
-        list_ = new_buckets;
-        length_ = new_length;
+            delete[] list_;
+            list_ = new_buckets;
+            length_ = new_length;
+        }
     }
 
-    size_t Hash(const K &key) const {
+    uint64_t Hash(const K &key) const {
         return std::hash<K>{}(key);
     }
 
     Node **list_;
-    size_t length_;
-    size_t size_;
+    uint64_t length_;
+    uint64_t size_;
 };
