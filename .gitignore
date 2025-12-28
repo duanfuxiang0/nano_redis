@@ -1,2 +1,14 @@
-build
-dragonfly
+build/
+*.o
+*.a
+.DS_Store
+.vscode/
+.cache/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+Makefile
+dragonfly/
+third_party/photonlibos/build/
+third_party/photonlibos/genfiles/

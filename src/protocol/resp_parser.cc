@@ -1,0 +1,192 @@
+#include "protocol/resp_parser.h"
+#include <photon/common/alog.h>
+#include <cctype>
+#include <sstream>
+
+int RESPParser::fill_buffer() {
+    if (buffer_pos_ >= buffer_size_) {
+        ssize_t n = stream_->read(buffer_, sizeof(buffer_));
+        if (n <= 0) {
+            return -1;
+        }
+        buffer_size_ = n;
+        buffer_pos_ = 0;
+    }
+    return 0;
+}
+
+char RESPParser::read_char() {
+    if (fill_buffer() < 0) {
+        return 0;
+    }
+    return buffer_[buffer_pos_++];
+}
+
+std::string RESPParser::read_line() {
+    std::string line;
+    while (true) {
+        if (fill_buffer() < 0) {
+            break;
+        }
+        while (buffer_pos_ < buffer_size_) {
+            char c = buffer_[buffer_pos_++];
+            if (c == '\r') {
+                if (buffer_pos_ < buffer_size_ && buffer_[buffer_pos_] == '\n') {
+                    buffer_pos_++;
+                    return line;
+                } else {
+                    line += c;
+                }
+            } else if (c == '\n') {
+                return line;
+            } else {
+                line += c;
+            }
+        }
+    }
+    return line;
+}
+
+std::string RESPParser::read_bulk_string(int64_t len) {
+    if (len < 0) {
+        return "";
+    }
+    std::string result;
+    result.reserve(len);
+    
+    size_t total_read = 0;
+    while (total_read < (size_t)len) {
+        if (fill_buffer() < 0) {
+            return "";
+        }
+        size_t available = buffer_size_ - buffer_pos_;
+        size_t to_read = std::min(available, (size_t)len - total_read);
+        result.append(buffer_ + buffer_pos_, to_read);
+        buffer_pos_ += to_read;
+        total_read += to_read;
+    }
+    
+    read_char();
+    read_char();
+    
+    return result;
+}
+
+int RESPParser::parse_inline_command(const std::string& line, std::vector<std::string>& args) {
+    std::istringstream iss(line);
+    std::string arg;
+    
+    while (iss >> arg) {
+        args.push_back(arg);
+    }
+    
+    return args.size() > 0 ? 0 : -1;
+}
+
+int RESPParser::parse_array(std::vector<std::string>& args) {
+    std::string line = read_line();
+    if (line.empty()) {
+        return -1;
+    }
+    
+    int64_t count = std::stoll(line);
+    if (count < 0) {
+        return 0;
+    }
+    
+    for (int64_t i = 0; i < count; i++) {
+        char c = read_char();
+        if (c == '\r' || c == '\n') {
+            c = read_char();
+        }
+        
+        if (c == '$') {
+            std::string len_str = read_line();
+            int64_t len = std::stoll(len_str);
+            std::string bulk = read_bulk_string(len);
+            args.push_back(bulk);
+        } else if (c == '+') {
+            args.push_back(read_line());
+        } else if (c == ':') {
+            args.push_back(read_line());
+        } else if (c == '-') {
+            args.push_back(read_line());
+        } else {
+            return -1;
+        }
+    }
+    
+    return args.size();
+}
+
+int RESPParser::parse_value(ParsedValue& value) {
+    char c = read_char();
+    if (c == '\r' || c == '\n') {
+        c = read_char();
+    }
+    
+    switch (c) {
+        case '+':
+            value.type = DataType::SimpleString;
+            value.str_value = read_line();
+            return 0;
+        case '-':
+            value.type = DataType::Error;
+            value.str_value = read_line();
+            return 0;
+        case ':':
+            value.type = DataType::Integer;
+            value.int_value = std::stoll(read_line());
+            return 0;
+        case '$': {
+            std::string len_str = read_line();
+            int64_t len = std::stoll(len_str);
+            value.type = DataType::BulkString;
+            value.str_value = (len >= 0) ? read_bulk_string(len) : "";
+            return 0;
+        }
+        default:
+            return -1;
+    }
+}
+
+int RESPParser::parse_command(std::vector<std::string>& args) {
+    args.clear();
+    
+    char c = read_char();
+    if (c == 0) {
+        return -1;
+    }
+    
+    if (c == '*') {
+        return parse_array(args);
+    } else {
+        std::string line(1, c);
+        line += read_line();
+        return parse_inline_command(line, args);
+    }
+}
+
+std::string RESPParser::make_simple_string(const std::string& s) {
+    return "+" + s + "\r\n";
+}
+
+std::string RESPParser::make_error(const std::string& msg) {
+    return "-ERR " + msg + "\r\n";
+}
+
+std::string RESPParser::make_bulk_string(const std::string& s) {
+    return "$" + std::to_string(s.size()) + "\r\n" + s + "\r\n";
+}
+
+std::string RESPParser::make_null_bulk_string() {
+    return "$-1\r\n";
+}
+
+std::string RESPParser::make_integer(int64_t value) {
+    return ":" + std::to_string(value) + "\r\n";
+}
+
+std::string RESPParser::make_array(int64_t count) {
+    return "*" + std::to_string(count) + "\r\n";
+}

@@ -1,3 +1,6 @@
 [submodule "third_party/photonlibos"]
 	path = third_party/photonlibos
 	url = https://github.com/alibaba/PhotonLibOS.git
+[submodule "third_party/abseil-cpp"]
+	path = third_party/abseil-cpp
+	url = https://github.com/abseil/abseil-cpp.git
