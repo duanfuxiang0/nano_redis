@@ -1,6 +1,12 @@
 [submodule "third_party/photonlibos"]
 	path = third_party/photonlibos
 	url = https://github.com/alibaba/PhotonLibOS.git
+	ignore = all
 [submodule "third_party/abseil-cpp"]
 	path = third_party/abseil-cpp
 	url = https://github.com/abseil/abseil-cpp.git
+	ignore = all
+[submodule "third_party/googletest"]
+  url = https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
+	path = third_party/googletest
+	ignore = all
