@@ -32,7 +32,7 @@ set(REDIS_HEADERS
   include/command/command_registry.h
   include/command/string_family.h
   include/storage/database.h
-  include/storage/hashtable.h
+  include/storage/dash.h
 )
 
 # Source files (按功能组织）
@@ -42,12 +42,14 @@ set(REDIS_SOURCES
   src/protocol/resp_parser.cc
   src/command/command_registry.cc
   src/command/string_family.cc
+  src/storage/dash.cc
   src/storage/database.cc
 )
 
 add_library(nano_redis STATIC ${REDIS_SOURCES} ${REDIS_HEADERS})
 target_include_directories(nano_redis PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
 target_link_libraries(nano_redis PUBLIC
   absl::strings

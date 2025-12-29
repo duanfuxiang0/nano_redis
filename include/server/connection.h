@@ -6,20 +6,20 @@
 
 class Connection {
 public:
-    Connection(photon::net::ISocketStream* socket);
-    ~Connection();
+	Connection(photon::net::ISocketStream* socket);
+	~Connection();
 
-    void close();
+	void close();
 
-    void SendError(const std::string& msg);
-    void SendSimpleString(const std::string& str);
-    void SendBulkString(const std::string& str);
-    void SendNullBulkString();
-    void SendInteger(int64_t value);
-    void SendArray(const std::vector<std::string>& values);
+	void SendError(const std::string& msg);
+	void SendSimpleString(const std::string& str);
+	void SendBulkString(const std::string& str);
+	void SendNullBulkString();
+	void SendInteger(int64_t value);
+	void SendArray(const std::vector<std::string>& values);
 
 private:
-    photon::net::ISocketStream* socket_;
+	photon::net::ISocketStream* socket_;
 
-    void SendRaw(const std::string& data);
+	void SendRaw(const std::string& data);
 };

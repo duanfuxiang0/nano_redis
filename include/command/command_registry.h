@@ -7,14 +7,14 @@
 
 class CommandRegistry {
 public:
-    using CommandHandler = std::function<std::string(const std::vector<std::string>&)>;
+	using CommandHandler = std::function<std::string(const std::vector<std::string>&)>;
 
-    static CommandRegistry& instance();
+	static CommandRegistry& instance();
 
-    void register_command(const std::string& name, CommandHandler handler);
-    std::string execute(const std::vector<std::string>& args);
+	void register_command(const std::string& name, CommandHandler handler);
+	std::string execute(const std::vector<std::string>& args);
 
 private:
-    CommandRegistry() = default;
-    absl::flat_hash_map<std::string, CommandHandler> handlers_;
+	CommandRegistry() = default;
+	absl::flat_hash_map<std::string, CommandHandler> handlers_;
 };
