@@ -1,7 +1,6 @@
 #pragma once
 
 #include <vector>
-#include <functional>
 #include <cstdint>
 #include <memory>
 
@@ -47,7 +46,7 @@ public:
 
 private:
 	struct Segment {
-		ankerl::unordered_dense::map<K, V> table;
+		ankerl::unordered_dense::map<K, V, ankerl::unordered_dense::hash<K>> table;
 		uint8_t local_depth;
 		uint32_t segment_id;
 

@@ -21,6 +21,9 @@ DashTable<K, V>::DashTable(DashTable&& other) noexcept
     : segment_directory_(std::move(other.segment_directory_)), global_depth_(other.global_depth_),
       max_segment_size_(other.max_segment_size_) {
 	other.global_depth_ = 0;
+	other.segment_directory_.clear();
+	other.segment_directory_.resize(1);
+	other.segment_directory_[0] = std::make_shared<Segment>(other.global_depth_, 0, other.max_segment_size_);
 }
 
 template <typename K, typename V>
@@ -31,6 +34,9 @@ DashTable<K, V>& DashTable<K, V>::operator=(DashTable&& other) noexcept {
 		max_segment_size_ = other.max_segment_size_;
 
 		other.global_depth_ = 0;
+		other.segment_directory_.clear();
+		other.segment_directory_.resize(1);
+		other.segment_directory_[0] = std::make_shared<Segment>(other.global_depth_, 0, other.max_segment_size_);
 	}
 	return *this;
 }
@@ -104,7 +110,7 @@ uint64_t DashTable<K, V>::BucketCount() const {
 
 template <typename K, typename V>
 uint64_t DashTable<K, V>::GetSegmentIndex(const K& key) const {
-	uint64_t hash = std::hash<K> {}(key);
+	uint64_t hash = ankerl::unordered_dense::hash<K> {}(key);
 	if (global_depth_ == 0) {
 		return 0;
 	}
@@ -140,7 +146,7 @@ void DashTable<K, V>::SplitSegment(uint32_t seg_id) {
 
 	uint64_t mask = (1ULL << global_depth_) - 1;
 	for (auto it = source->table.begin(); it != source->table.end();) {
-		uint64_t hash = std::hash<K> {}(it->first);
+		uint64_t hash = ankerl::unordered_dense::hash<K> {}(it->first);
 		uint32_t new_idx = hash & mask;
 
 		if (new_idx != seg_id) {
@@ -170,3 +176,5 @@ size_t DashTable<K, V>::NextSeg(size_t sid) const {
 }
 
 template class DashTable<std::string, std::string>;
+template class DashTable<int, int>;
+template class DashTable<int, double>;
