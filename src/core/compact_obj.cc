@@ -147,6 +147,22 @@ bool CompactObj::isString() const {
     return (getTag() <= kInlineLen) || getTag() == SMALL_STR_TAG;
 }
 
+bool CompactObj::isHash() const {
+    return u_.robj.type_ == OBJ_HASH;
+}
+
+bool CompactObj::isSet() const {
+    return u_.robj.type_ == OBJ_SET;
+}
+
+bool CompactObj::isList() const {
+    return u_.robj.type_ == OBJ_LIST;
+}
+
+bool CompactObj::isZset() const {
+    return u_.robj.type_ == OBJ_ZSET;
+}
+
 // ============================================================================
 // Value Conversion Methods
 // ============================================================================
@@ -376,3 +392,85 @@ int64_t CompactObj::getIntValue() const {
     }
     return 0;
 }
+
+// ============================================================================
+// Factory Methods for Different Types
+// ============================================================================
+
+CompactObj CompactObj::fromHash() {
+    CompactObj obj;
+    obj.setHash();
+    return obj;
+}
+
+CompactObj CompactObj::fromSet() {
+    CompactObj obj;
+    obj.setSet();
+    return obj;
+}
+
+CompactObj CompactObj::fromList() {
+    CompactObj obj;
+    obj.setList();
+    return obj;
+}
+
+CompactObj CompactObj::fromZset() {
+    CompactObj obj;
+    obj.setZset();
+    return obj;
+}
+
+// ============================================================================
+// Type Setters for Different Types
+// ============================================================================
+
+void CompactObj::setHash() {
+    clear();
+    u_.robj.type_ = OBJ_HASH;
+    u_.robj.encoding_ = OBJ_ENCODING_HASHTABLE;
+    u_.robj.inner_obj_ = nullptr;
+    u_.robj.sz_ = 0;
+    setTag(ROBJ_TAG);
+    setFlag(0);
+}
+
+void CompactObj::setSet() {
+    clear();
+    u_.robj.type_ = OBJ_SET;
+    u_.robj.encoding_ = OBJ_ENCODING_HASHTABLE;
+    u_.robj.inner_obj_ = nullptr;
+    u_.robj.sz_ = 0;
+    setTag(ROBJ_TAG);
+    setFlag(0);
+}
+
+void CompactObj::setList() {
+    clear();
+    u_.robj.type_ = OBJ_LIST;
+    u_.robj.encoding_ = OBJ_ENCODING_RAW;
+    u_.robj.inner_obj_ = nullptr;
+    u_.robj.sz_ = 0;
+    setTag(ROBJ_TAG);
+    setFlag(0);
+}
+
+void CompactObj::setZset() {
+    clear();
+    u_.robj.type_ = OBJ_ZSET;
+    u_.robj.encoding_ = OBJ_ENCODING_SKIPLIST;
+    u_.robj.inner_obj_ = nullptr;
+    u_.robj.sz_ = 0;
+    setTag(ROBJ_TAG);
+    setFlag(0);
+}
+// ============================================================================
+// Factory Methods for Different Types
+// ============================================================================
+
+// ============================================================================
+// Template Methods
+// ============================================================================
+
+// Remove template method implementations from .cc file
+

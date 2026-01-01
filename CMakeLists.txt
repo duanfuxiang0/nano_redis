@@ -31,6 +31,9 @@ set(REDIS_HEADERS
   include/server/connection.h
   include/command/command_registry.h
   include/command/string_family.h
+  include/command/hash_family.h
+  include/command/set_family.h
+  include/command/list_family.h
   include/core/database.h
   include/core/dashtable.h
   include/core/compact_obj.h
@@ -44,6 +47,9 @@ set(REDIS_SOURCES
   src/protocol/resp_parser.cc
   src/command/command_registry.cc
   src/command/string_family.cc
+  src/command/hash_family.cc
+  src/command/set_family.cc
+  src/command/list_family.cc
   src/core/dashtable.cc
   src/core/database.cc
   src/core/compact_obj.cc
@@ -75,6 +81,9 @@ add_executable(unit_tests
   tests/unit/hash_test.cc
   tests/unit/resp_parser_test.cc
   tests/unit/string_family_test.cc
+  tests/unit/hash_family_test.cc
+  tests/unit/set_family_test.cc
+  tests/unit/list_family_test.cc
 )
 target_link_libraries(unit_tests PRIVATE
   nano_redis

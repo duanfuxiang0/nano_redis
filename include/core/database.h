@@ -29,6 +29,8 @@ public:
 	void ClearAll();
 	std::vector<std::string> Keys() const;
 
+	const CompactObj* Find(const CompactObj& key) const;
+
 	bool Set(const CompactObj& key, const CompactObj& value);
 	bool Set(const CompactObj& key, CompactObj&& value);
 

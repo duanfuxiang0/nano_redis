@@ -11,6 +11,12 @@ RedisServer::RedisServer()
     : server_(photon::net::new_tcp_socket_server()) {
     StringFamily::SetDatabase(&store_);
     StringFamily::Register(&CommandRegistry::instance());
+    HashFamily::SetDatabase(&store_);
+    HashFamily::Register(&CommandRegistry::instance());
+    SetFamily::SetDatabase(&store_);
+    SetFamily::Register(&CommandRegistry::instance());
+    ListFamily::SetDatabase(&store_);
+    ListFamily::Register(&CommandRegistry::instance());
 }
 
 RedisServer::~RedisServer() {

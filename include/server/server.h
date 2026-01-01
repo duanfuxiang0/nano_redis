@@ -9,6 +9,9 @@
 #include "core/database.h"
 #include "core/compact_obj.h"
 #include "command/string_family.h"
+#include "command/hash_family.h"
+#include "command/set_family.h"
+#include "command/list_family.h"
 
 class RedisServer {
 public:

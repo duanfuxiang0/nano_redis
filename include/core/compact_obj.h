@@ -6,14 +6,22 @@
 #include <string_view>
 #include <optional>
 #include <new>
+#include <memory>
+#include <deque>
 
 constexpr size_t kInlineLen = 14;
 
 constexpr uint8_t OBJ_STRING = 0;
+constexpr uint8_t OBJ_HASH = 1;
+constexpr uint8_t OBJ_SET = 2;
+constexpr uint8_t OBJ_LIST = 3;
+constexpr uint8_t OBJ_ZSET = 4;
 
 constexpr uint8_t OBJ_ENCODING_RAW = 0;
 constexpr uint8_t OBJ_ENCODING_INT = 1;
 constexpr uint8_t OBJ_ENCODING_EMBSTR = 8;
+constexpr uint8_t OBJ_ENCODING_HASHTABLE = 2;
+constexpr uint8_t OBJ_ENCODING_SKIPLIST = 7;
 
 class RobjWrapper {
 public:
@@ -66,6 +74,10 @@ public:
 	bool isNull() const;
 	bool isInt() const;
 	bool isString() const;
+	bool isHash() const;
+	bool isSet() const;
+	bool isList() const;
+	bool isZset() const;
 
 	std::optional<std::string_view> tryToString() const;
 	std::optional<int64_t> tryToInt() const;
@@ -81,6 +93,38 @@ public:
 
 	std::string_view getStringView() const;
 	int64_t getIntValue() const;
+
+	template<typename T>
+	T* getObj() const {
+		if (getTag() != ROBJ_TAG) {
+			return nullptr;
+		}
+		return static_cast<T*>(u_.robj.inner_obj_);
+	}
+
+	template<typename T>
+	void setObj(T* obj) {
+		if (getTag() != ROBJ_TAG) {
+			return;
+		}
+		if (u_.robj.inner_obj_ != nullptr) {
+			::operator delete(u_.robj.inner_obj_);
+		}
+		u_.robj.inner_obj_ = obj;
+	}
+
+	static CompactObj fromHash();
+	static CompactObj fromSet();
+	static CompactObj fromList();
+	static CompactObj fromZset();
+
+	void setHash();
+	void setSet();
+	void setList();
+	void setZset();
+
+
+
 
 private:
 	void setTag(uint8_t tag);

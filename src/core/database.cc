@@ -66,3 +66,7 @@ std::vector<std::string> Database::Keys() const {
 	});
 	return keys;
 }
+
+const CompactObj* Database::Find(const CompactObj& key) const {
+	return tables_[current_db_]->Find(key);
+}

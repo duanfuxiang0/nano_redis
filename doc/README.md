@@ -4,6 +4,29 @@
 
 ## 文档列表
 
+### [DashTable 设计文档](./dashtable_design.md)
+
+**内容**：Extendible Hashing 哈希表的完整设计说明
+
+**适用场景**：
+- 理解 DashTable 的数据结构
+- 学习动态扩容机制
+- 掌握索引计算算法
+- 进行性能优化
+
+**涉及技术**：
+- Extendible Hashing 算法原理
+- Directory 和 Segment 的组织方式
+- Hash 索引计算（使用高位）
+- 动态扩容流程
+- ASCII 图示说明
+
+**关键收获**：
+- 如何组织 Directory 和 Segment 的映射关系
+- Local Depth 和 Global Depth 的作用
+- Segment Split 和 Directory Expansion 的完整流程
+- 性能权衡和设计决策
+
 ### [Valgrind 调试工作流](./valgrind_debugging_workflow.md)
 
 **内容**：使用 Valgrind 排查随机 Coredump 问题的完整流程
