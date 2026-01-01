@@ -107,7 +107,7 @@ nano_redis/
 ├── include/                # 头文件
 │   ├── base/             # 基础工具（Socket, Fiber）
 │   ├── protocol/         # 协议层（RESP 解析/构建）
-│   ├── storage/          # 存储层（HashMap, 数据结构）
+│   ├── core/          # 存储层（HashMap, 数据结构）
 │   ├── server/           # 服务器层（分片、调度）
 │   ├── persistence/      # 持久化层（AOF, Snapshot）
 │   ├── command/         # 命令层（Family）
@@ -115,7 +115,7 @@ nano_redis/
 ├── src/                 # 实现文件
 │   ├── base/
 │   ├── protocol/
-│   ├── storage/
+│   ├── core/
 │   ├── server/
 │   ├── persistence/
 │   ├── command/
@@ -142,15 +142,15 @@ nano_redis/
 - **职责**: RESP 协议解析和序列化
 - **参考**: Dragonfly `facade/redis_parser.h`
 
-### Storage (存储层)
+### core (存储层)
 
 - **文件**:
-  - `storage/hash_table.h` - 哈希表接口
-  - `storage/simple_hash.h/cpp` - 拉链法实现
-  - `storage/dense_hash.h/cpp` - Dragonfly DenseSet
-  - `storage/hopscotch_hash.h/cpp` - 跳跃哈希
-  - `storage/db_slice.h/cpp` - 存储分片
-  - `storage/time_wheel.h/cpp` - TTL 时间轮
+  - `core/hash_table.h` - 哈希表接口
+  - `core/simple_hash.h/cpp` - 拉链法实现
+  - `core/dense_hash.h/cpp` - Dragonfly DenseSet
+  - `core/hopscotch_hash.h/cpp` - 跳跃哈希
+  - `core/db_slice.h/cpp` - 存储分片
+  - `core/time_wheel.h/cpp` - TTL 时间轮
 - **职责**: 键值存储、TTL 过期
 - **参考**: Dragonfly `core/dense_set.h`
 
@@ -194,9 +194,9 @@ nano_redis/
 | Nano-Redis | DragonflyDB | 学习重点 |
 |-----------|-------------|---------|
 | `protocol/` | `facade/redis_parser.h` | Socket, RESP |
-| `storage/simple_hash.h` | - | 基本哈希表原理 |
-| `storage/dense_hash.h` | `core/dense_set.h` | 内存优化技巧 |
-| `storage/ds_*.h` | `server/*_family.cc` | 数据结构设计 |
+| `core/simple_hash.h` | - | 基本哈希表原理 |
+| `core/dense_hash.h` | `core/dense_set.h` | 内存优化技巧 |
+| `core/ds_*.h` | `server/*_family.cc` | 数据结构设计 |
 | `server/engine_shard.h` | `server/engine_shard.h` | 分片架构 |
 | `persistence/aof_*.h` | `server/journal/` | AOF 机制 |
 | `persistence/snapshot.h` | `server/rdb_*.cc` | Snapshot 机制 |
@@ -301,18 +301,18 @@ Apache License 2.0
 - `command/command_registry.h/cpp` - 命令注册
 
 ### Lab 1: 内存存储引擎
-- `storage/hash_table.h` - 接口
-- `storage/simple_hash.h/cpp` - 拉链法
-- `storage/dense_hash.h/cpp` - DenseSet
-- `storage/hopscotch_hash.h/cpp` - 跳跃哈希
-- `storage/db_slice.h/cpp` - 存储分片
+- `core/hash_table.h` - 接口
+- `core/simple_hash.h/cpp` - 拉链法
+- `core/dense_hash.h/cpp` - DenseSet
+- `core/hopscotch_hash.h/cpp` - 跳跃哈希
+- `core/db_slice.h/cpp` - 存储分片
 - `command/string_family.h/cpp` - String 命令
 
 ### Lab 2: 高级数据结构
-- `storage/ds_list.h/cpp` - List
-- `storage/ds_hash.h/cpp` - Hash
-- `storage/ds_set.h/cpp` - Set
-- `storage/ds_zset.h/cpp` - ZSet
+- `core/ds_list.h/cpp` - List
+- `core/ds_hash.h/cpp` - Hash
+- `core/ds_set.h/cpp` - Set
+- `core/ds_zset.h/cpp` - ZSet
 - `command/hash_family.h/cpp` - Hash 命令
 - `command/list_family.h/cpp` - List 命令
 - `command/set_family.h/cpp` - Set 命令

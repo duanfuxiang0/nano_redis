@@ -6,9 +6,15 @@ This file provides guidelines for AI coding agents working on the nano_redis cod
 
 The project has a simple structure with three main directories:
 
-* **include/** - Header files organized by module (command, protocol, server, storage)
+* **include/** - Header files organized by module (command, protocol, server, core)
 * **src/** - Source files corresponding to the header files
 * **tests/unit/** - Unit tests for the core components
+
+## External Reference Codebases
+
+* **./dragonfly** - A reference library located in the root directory for learning purposes. All code in this repository can be read and studied.
+* **./valkey** - A reference library located in the root directory for learning purposes. All code in this repository can be read and studied.
+* **./third_party/photonlibos** - A dependent library in the third_party directory. Focus on reading and learning its interfaces and APIs.
 
 ## Build, Lint, and Test Commands
 
@@ -21,14 +27,12 @@ cmake --build .
 
 ### Run All Tests
 ```bash
-cd build
-ctest
+./run_tests.sh
 ```
 
 ### Run Single Test
 ```bash
-cd build
-./unit_tests --gtest_filter=TestSuite.TestName
+./build/unit_tests --gtest_filter=TestSuite.TestName
 ```
 
 ### Lint/Format
@@ -43,7 +47,6 @@ clang-format -i --style=file <file>
 * Strongly prefer the use of `unique_ptr` over `shared_ptr`, only use `shared_ptr` if you **absolutely** have to.
 * Use `const` whenever possible.
 * Do **not** import namespaces (e.g. `using std`).
-* All functions in source files in the core (`src` directory) should be part of the `duckdb` namespace.
 * When overriding a virtual method, avoid repeating virtual and always use `override` or `final`.
 * Use `[u]int(8|16|32|64)_t` instead of `int`, `long`, `uint` etc. Use `idx_t` instead of `size_t` for offsets/indices/counts of any kind.
 * Prefer using references over pointers as arguments.
@@ -71,13 +74,6 @@ clang-format -i --style=file <file>
 * Avoid [unnamed magic numbers](https://en.wikipedia.org/wiki/Magic_number_(programming)). Instead, use named variables that are stored in a `constexpr`.
 * [Return early](https://medium.com/swlh/return-early-pattern-3d18a41bba8). Avoid deep nested branches.
 * Do not include commented out code blocks in pull requests.
-
-## Error Handling
-
-* Use exceptions **only** when an error is encountered that terminates a query (e.g. parser error, table not found). Exceptions should only be used for **exceptional** situations. For regular errors that do not break the execution flow (e.g. errors you **expect** might occur) use a return value instead.
-* Try to add test cases that trigger exceptions. If an exception cannot be easily triggered using a test case then it should probably be an assertion. This is not always true (e.g. out of memory errors are exceptions, but are very hard to trigger).
-* Use `D_ASSERT` to assert. Use **assert** only when failing the assert means a programmer error. Assert should never be triggered by user input. Avoid code like `D_ASSERT(a > b + 3);` without comments or context.
-* Assert liberally, but make it clear with comments next to the assert what went wrong when the assert is triggered.
 
 ## Naming Conventions
 

@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <photon/common/stream.h>
+#include "core/compact_obj.h"
 
 class RESPParser {
 public:
@@ -10,18 +11,17 @@ public:
 
 	struct ParsedValue {
 		DataType type;
-		std::string str_value;
-		int64_t int_value;
+		CompactObj obj_value;
 		std::vector<ParsedValue> array_value;
 
-		ParsedValue() : type(DataType::SimpleString), int_value(0) {
+		ParsedValue() : type(DataType::SimpleString), obj_value() {
 		}
 	};
 
 	RESPParser(IStream* stream) : stream_(stream) {
 	}
 
-	int parse_command(std::vector<std::string>& args);
+	int parse_command(std::vector<CompactObj>& args);
 
 	static std::string make_simple_string(const std::string& s);
 	static std::string make_error(const std::string& msg);
@@ -31,16 +31,18 @@ public:
 	static std::string make_array(int64_t count);
 
 private:
+	int parse_array(std::vector<CompactObj>& args);
+	int parse_inline_command(const std::string& line, std::vector<CompactObj>& args);
+	int parse_value(ParsedValue& value);
+
+	char read_char();
+	std::string read_line();
+	std::string read_bulk_string(int64_t len);
+	int fill_buffer();
+
+private:
 	IStream* stream_;
 	char buffer_[1024];
 	size_t buffer_pos_ = 0;
 	size_t buffer_size_ = 0;
-
-	int fill_buffer();
-	char read_char();
-	std::string read_line();
-	std::string read_bulk_string(int64_t len);
-	int parse_array(std::vector<std::string>& args);
-	int parse_inline_command(const std::string& line, std::vector<std::string>& args);
-	int parse_value(ParsedValue& value);
 };

@@ -31,8 +31,10 @@ set(REDIS_HEADERS
   include/server/connection.h
   include/command/command_registry.h
   include/command/string_family.h
-  include/storage/database.h
-  include/storage/dash.h
+  include/core/database.h
+  include/core/dashtable.h
+  include/core/compact_obj.h
+  include/core/util.h
 )
 
 # Source files (按功能组织）
@@ -42,8 +44,10 @@ set(REDIS_SOURCES
   src/protocol/resp_parser.cc
   src/command/command_registry.cc
   src/command/string_family.cc
-  src/storage/dash.cc
-  src/storage/database.cc
+  src/core/dashtable.cc
+  src/core/database.cc
+  src/core/compact_obj.cc
+  src/core/util.cc
 )
 
 add_library(nano_redis STATIC ${REDIS_SOURCES} ${REDIS_HEADERS})
@@ -64,10 +68,13 @@ target_link_libraries(nano_redis_server PRIVATE nano_redis gflags_static)
 
 # Unit tests executable
 add_executable(unit_tests
-  tests/unit/resp_parser_test.cc
-  tests/unit/hash_test.cc
-  tests/unit/string_family_test.cc
+  tests/unit/compact_obj_test.cc
+  tests/unit/dashtable_debug_test.cc
   tests/unit/database_test.cc
+  tests/unit/dashtable_debug_test.cc
+  tests/unit/hash_test.cc
+  tests/unit/resp_parser_test.cc
+  tests/unit/string_family_test.cc
 )
 target_link_libraries(unit_tests PRIVATE
   nano_redis

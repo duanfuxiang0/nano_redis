@@ -3,6 +3,7 @@
 #include <vector>
 #include "command/string_family.h"
 #include "command/command_registry.h"
+#include "core/compact_obj.h"
 
 class StringFamilyTest : public ::testing::Test {
 protected:
@@ -13,8 +14,10 @@ protected:
 	}
 
 	std::string Execute(const std::string& cmd, const std::vector<std::string>& args) {
-		std::vector<std::string> full_args = {cmd};
-		full_args.insert(full_args.end(), args.begin(), args.end());
+		std::vector<CompactObj> full_args = {CompactObj::fromKey(cmd)};
+		for (const auto& arg : args) {
+			full_args.push_back(CompactObj::fromKey(arg));
+		}
 		return registry_->execute(full_args);
 	}
 

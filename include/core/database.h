@@ -5,8 +5,9 @@
 #include <memory>
 #include <array>
 #include <vector>
+#include "core/compact_obj.h"
 
-#include "storage/dash.h"
+#include "core/dashtable.h"
 
 class Database {
 public:
@@ -15,10 +16,10 @@ public:
 	explicit Database();
 	~Database() = default;
 
-	bool Set(const std::string& key, const std::string& value);
-	std::optional<std::string> Get(const std::string& key) const;
-	bool Del(const std::string& key);
-	bool Exists(const std::string& key);
+	bool Set(const CompactObj& key, const std::string& value);
+	std::optional<std::string> Get(const CompactObj& key) const;
+	bool Del(const CompactObj& key);
+	bool Exists(const CompactObj& key);
 	size_t KeyCount() const;
 	bool Select(size_t db_index);
 	size_t CurrentDB() const {
@@ -28,8 +29,11 @@ public:
 	void ClearAll();
 	std::vector<std::string> Keys() const;
 
+	bool Set(const CompactObj& key, const CompactObj& value);
+	bool Set(const CompactObj& key, CompactObj&& value);
+
 private:
-	using Table = DashTable<std::string, std::string>;
+	using Table = DashTable<CompactObj, CompactObj>;
 	std::array<std::unique_ptr<Table>, kNumDBs> tables_;
 	size_t current_db_ = 0;
 };

@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <string>
 #include <vector>
-#include "storage/dash.h"
+#include "core/dashtable.h"
 
 class DashTableTest : public ::testing::Test {
 protected:

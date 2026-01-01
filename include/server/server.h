@@ -6,7 +6,8 @@
 #include <string>
 #include <vector>
 
-#include "storage/database.h"
+#include "core/database.h"
+#include "core/compact_obj.h"
 #include "command/string_family.h"
 
 class RedisServer {
@@ -22,5 +23,5 @@ private:
 	Database store_;
 
 	int handle_client(photon::net::ISocketStream* stream);
-	std::string process_command(const std::vector<std::string>& args);
+	std::string process_command(const std::vector<CompactObj>& args);
 };

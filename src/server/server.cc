@@ -17,41 +17,42 @@ RedisServer::~RedisServer() {
     term();
 }
 
-std::string RedisServer::process_command(const std::vector<std::string>& args) {
+std::string RedisServer::process_command(const std::vector<CompactObj>& args) {
     return CommandRegistry::instance().execute(args);
 }
 
 int RedisServer::handle_client(photon::net::ISocketStream* stream) {
     LOG_INFO("New client connected");
-    
+
     RESPParser parser(stream);
-    
+
     while (true) {
-        std::vector<std::string> args;
+        std::vector<CompactObj> args;
         int ret = parser.parse_command(args);
-        
+
         if (ret < 0) {
             LOG_INFO("Client disconnected");
             return 0;
         }
-        
+
         if (!args.empty()) {
-            LOG_INFO("Received command: `", args[0]);
+            LOG_INFO("Received command: `", args[0].toString());
             std::string response = process_command(args);
-            
-            if (args[0] == "QUIT") {
+
+            std::string cmd_str = args[0].toString();
+            if (cmd_str == "QUIT") {
                 stream->send(response.data(), response.size());
                 st_usleep(10000);
                 return 0;
             }
-            
+
             ssize_t written = stream->send(response.data(), response.size());
             if (written < 0) {
                 LOG_ERRNO_RETURN(0, -1, "Failed to write response");
             }
         }
     }
-    
+
     return 0;
 }
 

@@ -115,6 +115,9 @@
 
 #endif
 
+// Forward declaration and include CompactObj for hash specialization
+#include "core/compact_obj.h"
+
 namespace ankerl::unordered_dense {
 inline namespace ANKERL_UNORDERED_DENSE_NAMESPACE {
 
@@ -421,6 +424,26 @@ ANKERL_UNORDERED_DENSE_HASH_STATICCAST(unsigned long long);
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
+
+// CompactObj hash specialization
+template <>
+struct hash<CompactObj> {
+	using is_avalanching = void;
+	auto operator()(CompactObj const& obj) const noexcept -> std::uint64_t {
+		uint8_t tag = obj.getTag();
+
+		if (tag <= 14) {
+			auto sv = obj.getStringView();
+			return detail::wyhash::hash(sv.data(), sv.size());
+		} else if (tag == 15) {
+			return detail::wyhash::hash(static_cast<std::uint64_t>(obj.getIntValue()));
+		} else if (tag == 16) {
+			auto sv = obj.getStringView();
+			return detail::wyhash::hash(sv.data(), sv.size());
+		}
+		return 0;
+	}
+};
 
 // bucket_type //////////////////////////////////////////////////////////
 

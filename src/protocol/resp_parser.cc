@@ -53,7 +53,7 @@ std::string RESPParser::read_bulk_string(int64_t len) {
     }
     std::string result;
     result.reserve(len);
-    
+
     size_t total_read = 0;
     while (total_read < (size_t)len) {
         if (fill_buffer() < 0) {
@@ -65,57 +65,57 @@ std::string RESPParser::read_bulk_string(int64_t len) {
         buffer_pos_ += to_read;
         total_read += to_read;
     }
-    
+
     read_char();
     read_char();
-    
+
     return result;
 }
 
-int RESPParser::parse_inline_command(const std::string& line, std::vector<std::string>& args) {
+int RESPParser::parse_inline_command(const std::string& line, std::vector<CompactObj>& args) {
     std::istringstream iss(line);
     std::string arg;
-    
+
     while (iss >> arg) {
-        args.push_back(arg);
+        args.push_back(CompactObj::fromKey(arg));
     }
-    
+
     return args.size() > 0 ? 0 : -1;
 }
 
-int RESPParser::parse_array(std::vector<std::string>& args) {
+int RESPParser::parse_array(std::vector<CompactObj>& args) {
     std::string line = read_line();
     if (line.empty()) {
         return -1;
     }
-    
+
     int64_t count = std::stoll(line);
     if (count < 0) {
         return 0;
     }
-    
+
     for (int64_t i = 0; i < count; i++) {
         char c = read_char();
         if (c == '\r' || c == '\n') {
             c = read_char();
         }
-        
+
         if (c == '$') {
             std::string len_str = read_line();
             int64_t len = std::stoll(len_str);
             std::string bulk = read_bulk_string(len);
-            args.push_back(bulk);
+            args.push_back(CompactObj::fromKey(bulk));
         } else if (c == '+') {
-            args.push_back(read_line());
+            args.push_back(CompactObj::fromKey(read_line()));
         } else if (c == ':') {
-            args.push_back(read_line());
+            args.push_back(CompactObj::fromKey(read_line()));
         } else if (c == '-') {
-            args.push_back(read_line());
+            args.push_back(CompactObj::fromKey(read_line()));
         } else {
             return -1;
         }
     }
-    
+
     return args.size();
 }
 
@@ -124,25 +124,31 @@ int RESPParser::parse_value(ParsedValue& value) {
     if (c == '\r' || c == '\n') {
         c = read_char();
     }
-    
+
     switch (c) {
         case '+':
             value.type = DataType::SimpleString;
-            value.str_value = read_line();
+            value.obj_value = CompactObj::fromKey(read_line());
             return 0;
         case '-':
             value.type = DataType::Error;
-            value.str_value = read_line();
+            value.obj_value = CompactObj::fromKey(read_line());
             return 0;
-        case ':':
+        case ':': {
             value.type = DataType::Integer;
-            value.int_value = std::stoll(read_line());
+            int64_t int_val = std::stoll(read_line());
+            value.obj_value = CompactObj::fromInt(int_val);
             return 0;
+        }
         case '$': {
             std::string len_str = read_line();
             int64_t len = std::stoll(len_str);
             value.type = DataType::BulkString;
-            value.str_value = (len >= 0) ? read_bulk_string(len) : "";
+            if (len >= 0) {
+                value.obj_value = CompactObj::fromKey(read_bulk_string(len));
+            } else {
+                value.obj_value = CompactObj();
+            }
             return 0;
         }
         default:
@@ -150,14 +156,14 @@ int RESPParser::parse_value(ParsedValue& value) {
     }
 }
 
-int RESPParser::parse_command(std::vector<std::string>& args) {
+int RESPParser::parse_command(std::vector<CompactObj>& args) {
     args.clear();
-    
+
     char c = read_char();
     if (c == 0) {
         return -1;
     }
-    
+
     if (c == '*') {
         return parse_array(args);
     } else {

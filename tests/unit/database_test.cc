@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 #include <string>
 #include <set>
-#include "storage/database.h"
+#include "core/database.h"
+#include "core/compact_obj.h"
+#include "core/compact_obj.h"
 
 class DatabaseTest : public ::testing::Test {
 protected:
@@ -9,59 +11,59 @@ protected:
 };
 
 TEST_F(DatabaseTest, SetAndGet) {
-	EXPECT_TRUE(db_.Set("key1", "value1"));
-	auto result = db_.Get("key1");
+	EXPECT_TRUE(db_.Set(CompactObj::fromKey("key1"), "value1"));
+	auto result = db_.Get(CompactObj::fromKey("key1"));
 	ASSERT_TRUE(result.has_value());
 	EXPECT_EQ(result.value(), "value1");
 }
 
 TEST_F(DatabaseTest, GetNonExistent) {
-	auto result = db_.Get("nonexistent");
+	auto result = db_.Get(CompactObj::fromKey("nonexistent"));
 	EXPECT_FALSE(result.has_value());
 }
 
 TEST_F(DatabaseTest, SetOverwrite) {
-	db_.Set("key1", "value1");
-	db_.Set("key1", "value2");
+	db_.Set(CompactObj::fromKey("key1"), "value1");
+	db_.Set(CompactObj::fromKey("key1"), "value2");
 
-	auto result = db_.Get("key1");
+	auto result = db_.Get(CompactObj::fromKey("key1"));
 	ASSERT_TRUE(result.has_value());
 	EXPECT_EQ(result.value(), "value2");
 }
 
 TEST_F(DatabaseTest, DeleteExisting) {
-	db_.Set("key1", "value1");
-	EXPECT_TRUE(db_.Del("key1"));
+	db_.Set(CompactObj::fromKey("key1"), "value1");
+	EXPECT_TRUE(db_.Del(CompactObj::fromKey("key1")));
 
-	auto result = db_.Get("key1");
+	auto result = db_.Get(CompactObj::fromKey("key1"));
 	EXPECT_FALSE(result.has_value());
 }
 
 TEST_F(DatabaseTest, DeleteNonExistent) {
-	EXPECT_FALSE(db_.Del("nonexistent"));
+	EXPECT_FALSE(db_.Del(CompactObj::fromKey("nonexistent")));
 }
 
 TEST_F(DatabaseTest, Exists) {
-	EXPECT_FALSE(db_.Exists("key1"));
+	EXPECT_FALSE(db_.Exists(CompactObj::fromKey("key1")));
 
-	db_.Set("key1", "value1");
-	EXPECT_TRUE(db_.Exists("key1"));
+	db_.Set(CompactObj::fromKey("key1"), "value1");
+	EXPECT_TRUE(db_.Exists(CompactObj::fromKey("key1")));
 
-	db_.Del("key1");
-	EXPECT_FALSE(db_.Exists("key1"));
+	db_.Del(CompactObj::fromKey("key1"));
+	EXPECT_FALSE(db_.Exists(CompactObj::fromKey("key1")));
 }
 
 TEST_F(DatabaseTest, KeyCount) {
 	EXPECT_EQ(db_.KeyCount(), 0);
 
-	db_.Set("key1", "value1");
+	db_.Set(CompactObj::fromKey("key1"), "value1");
 	EXPECT_EQ(db_.KeyCount(), 1);
 
-	db_.Set("key2", "value2");
-	db_.Set("key3", "value3");
+	db_.Set(CompactObj::fromKey("key2"), "value2");
+	db_.Set(CompactObj::fromKey("key3"), "value3");
 	EXPECT_EQ(db_.KeyCount(), 3);
 
-	db_.Del("key1");
+	db_.Del(CompactObj::fromKey("key1"));
 	EXPECT_EQ(db_.KeyCount(), 2);
 }
 
@@ -86,50 +88,50 @@ TEST_F(DatabaseTest, SelectInvalidDatabase) {
 }
 
 TEST_F(DatabaseTest, MultipleDatabasesIsolation) {
-	db_.Set("key1", "value1");
+	db_.Set(CompactObj::fromKey("key1"), "value1");
 	EXPECT_EQ(db_.KeyCount(), 1);
 
 	db_.Select(1);
 	EXPECT_EQ(db_.KeyCount(), 0);
 
-	db_.Set("key2", "value2");
+	db_.Set(CompactObj::fromKey("key2"), "value2");
 	EXPECT_EQ(db_.KeyCount(), 1);
 
 	db_.Select(0);
 	EXPECT_EQ(db_.KeyCount(), 1);
 
-	auto result = db_.Get("key1");
+	auto result = db_.Get(CompactObj::fromKey("key1"));
 	ASSERT_TRUE(result.has_value());
 	EXPECT_EQ(result.value(), "value1");
 
 	db_.Select(1);
-	result = db_.Get("key2");
+	result = db_.Get(CompactObj::fromKey("key2"));
 	ASSERT_TRUE(result.has_value());
 	EXPECT_EQ(result.value(), "value2");
 }
 
 TEST_F(DatabaseTest, ClearCurrentDatabase) {
-	db_.Set("key1", "value1");
-	db_.Set("key2", "value2");
+	db_.Set(CompactObj::fromKey("key1"), "value1");
+	db_.Set(CompactObj::fromKey("key2"), "value2");
 	EXPECT_EQ(db_.KeyCount(), 2);
 
 	db_.ClearCurrentDB();
 	EXPECT_EQ(db_.KeyCount(), 0);
 
-	auto result = db_.Get("key1");
+	auto result = db_.Get(CompactObj::fromKey("key1"));
 	EXPECT_FALSE(result.has_value());
 }
 
 TEST_F(DatabaseTest, ClearAllDatabases) {
-	db_.Set("key1", "value1");
+	db_.Set(CompactObj::fromKey("key1"), "value1");
 	EXPECT_EQ(db_.KeyCount(), 1);
 
 	db_.Select(1);
-	db_.Set("key2", "value2");
+	db_.Set(CompactObj::fromKey("key2"), "value2");
 	EXPECT_EQ(db_.KeyCount(), 1);
 
 	db_.Select(2);
-	db_.Set("key3", "value3");
+	db_.Set(CompactObj::fromKey("key3"), "value3");
 	EXPECT_EQ(db_.KeyCount(), 1);
 
 	db_.ClearAll();
@@ -145,34 +147,34 @@ TEST_F(DatabaseTest, BulkInsert) {
 	for (int i = 0; i < N; ++i) {
 		std::string key = "key" + std::to_string(i);
 		std::string value = "value" + std::to_string(i);
-		db_.Set(key, value);
+		db_.Set(CompactObj::fromKey(key), value);
 	}
 
 	EXPECT_EQ(db_.KeyCount(), N);
 
 	for (int i = 0; i < N; ++i) {
-		std::string key = "key" + std::to_string(i);
+		std::string key_str = "key" + std::to_string(i);
 		std::string expected = "value" + std::to_string(i);
-		auto result = db_.Get(key);
+		auto result = db_.Get(CompactObj::fromKey(key_str));
 		ASSERT_TRUE(result.has_value());
 		EXPECT_EQ(result.value(), expected);
 	}
 }
 
 TEST_F(DatabaseTest, MixedOperations) {
-	db_.Set("a", "1");
-	db_.Set("b", "2");
-	db_.Set("c", "3");
+	db_.Set(CompactObj::fromKey("a"), "1");
+	db_.Set(CompactObj::fromKey("b"), "2");
+	db_.Set(CompactObj::fromKey("c"), "3");
 
-	auto result_a = db_.Get("a");
+	auto result_a = db_.Get(CompactObj::fromKey("a"));
 	ASSERT_TRUE(result_a.has_value());
 	EXPECT_EQ(result_a.value(), "1");
 
-	EXPECT_TRUE(db_.Del("b"));
-	EXPECT_FALSE(db_.Exists("b"));
+	EXPECT_TRUE(db_.Del(CompactObj::fromKey("b")));
+	EXPECT_FALSE(db_.Exists(CompactObj::fromKey("b")));
 
-	db_.Set("b", "new2");
-	auto result_b = db_.Get("b");
+	db_.Set(CompactObj::fromKey("b"), "new2");
+	auto result_b = db_.Get(CompactObj::fromKey("b"));
 	ASSERT_TRUE(result_b.has_value());
 	EXPECT_EQ(result_b.value(), "new2");
 
@@ -180,26 +182,26 @@ TEST_F(DatabaseTest, MixedOperations) {
 }
 
 TEST_F(DatabaseTest, SelectBackAndForth) {
-	db_.Set("db0_key", "db0_value");
+	db_.Set(CompactObj::fromKey("db0_key"), "db0_value");
 
 	db_.Select(1);
-	db_.Set("db1_key", "db1_value");
+	db_.Set(CompactObj::fromKey("db1_key"), "db1_value");
 
 	db_.Select(0);
-	auto result = db_.Get("db0_key");
+	auto result = db_.Get(CompactObj::fromKey("db0_key"));
 	ASSERT_TRUE(result.has_value());
 	EXPECT_EQ(result.value(), "db0_value");
 
 	db_.Select(1);
-	result = db_.Get("db1_key");
+	result = db_.Get(CompactObj::fromKey("db1_key"));
 	ASSERT_TRUE(result.has_value());
 	EXPECT_EQ(result.value(), "db1_value");
 }
 
 TEST_F(DatabaseTest, Keys) {
-	db_.Set("key1", "value1");
-	db_.Set("key2", "value2");
-	db_.Set("key3", "value3");
+	db_.Set(CompactObj::fromKey("key1"), "value1");
+	db_.Set(CompactObj::fromKey("key2"), "value2");
+	db_.Set(CompactObj::fromKey("key3"), "value3");
 
 	auto keys = db_.Keys();
 	EXPECT_EQ(keys.size(), 3);
