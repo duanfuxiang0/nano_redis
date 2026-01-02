@@ -95,6 +95,7 @@ add_executable(unit_tests
 	tests/unit/hash_family_test.cc
 	tests/unit/set_family_test.cc
 	tests/unit/list_family_test.cc
+	tests/unit/integration_test.cc
 	tests/unit/task_queue_test.cc
 	tests/unit/sharding_test.cc
 	tests/unit/task_queue_await_test.cc
