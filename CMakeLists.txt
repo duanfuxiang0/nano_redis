@@ -14,7 +14,7 @@ endif()
 find_package(gflags REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error")
-set(HOTON_ENABLE_URING ON CACHE BOOL "enable io_uring function" FORCE)
+set(PHOTON_ENABLE_URING ON CACHE BOOL "enable io_uring function" FORCE)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/photonlibos EXCLUDE_FROM_ALL)
 
 set(ABSL_PROPAGATE_CXX_STD ON)
@@ -28,21 +28,30 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest EXCLUDE_FROM
 set(REDIS_HEADERS
   include/protocol/resp_parser.h
   include/server/server.h
+  include/server/sharded_server.h
+  include/server/engine_shard.h
+  include/server/engine_shard_set.h
+  include/server/sharding.h
   include/server/connection.h
   include/command/command_registry.h
   include/command/string_family.h
   include/command/hash_family.h
   include/command/set_family.h
   include/command/list_family.h
+  include/core/command_context.h
   include/core/database.h
   include/core/dashtable.h
   include/core/compact_obj.h
   include/core/util.h
+  include/core/task_queue.h
 )
 
 # Source files (按功能组织）
 set(REDIS_SOURCES
   src/server/server.cc
+  src/server/sharded_server.cc
+  src/server/engine_shard.cc
+  src/server/engine_shard_set.cc
   src/server/connection.cc
   src/protocol/resp_parser.cc
   src/command/command_registry.cc
@@ -54,6 +63,8 @@ set(REDIS_SOURCES
   src/core/database.cc
   src/core/compact_obj.cc
   src/core/util.cc
+  src/core/task_queue.cc
+  src/core/command_context.cc
 )
 
 add_library(nano_redis STATIC ${REDIS_SOURCES} ${REDIS_HEADERS})
@@ -84,6 +95,11 @@ add_executable(unit_tests
   tests/unit/hash_family_test.cc
   tests/unit/set_family_test.cc
   tests/unit/list_family_test.cc
+  tests/unit/set_family_test.cc
+  tests/unit/list_family_test.cc
+  tests/unit/task_queue_test.cc
+  tests/unit/sharding_test.cc
+  tests/unit/task_queue_await_test.cc
 )
 target_link_libraries(unit_tests PRIVATE
   nano_redis

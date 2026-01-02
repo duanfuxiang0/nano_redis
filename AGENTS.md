@@ -18,16 +18,16 @@ The project has a simple structure with three main directories:
 
 ## Build, Lint, and Test Commands
 
-### Build
+### Re Build
 ```bash
-mkdir build && cd build
+rm -rf build && mkdir build && cd build
 cmake ..
 cmake --build .
 ```
 
 ### Run All Tests
 ```bash
-./run_tests.sh
+./build/unit_tests
 ```
 
 ### Run Single Test
@@ -91,3 +91,7 @@ clang-format -i --style=file <file>
 - Compiler warnings: `-Wall -Wextra`
 - No error from warnings (`-Wno-error`)
 - Build produces: `nano_redis_server` and `unit_tests`
+
+## Shared-Nothing Architecture
+
+This project uses a shared-nothing, thread-per-core architecture. **See `doc/shard_concurrency_plan.md` for full details.**

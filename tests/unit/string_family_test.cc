@@ -4,13 +4,16 @@
 #include "command/string_family.h"
 #include "command/command_registry.h"
 #include "core/compact_obj.h"
+#include "core/database.h"
+#include "core/command_context.h"
 
 class StringFamilyTest : public ::testing::Test {
 protected:
 	void SetUp() override {
 		registry_ = &CommandRegistry::instance();
 		StringFamily::Register(registry_);
-		StringFamily::ClearDatabase();
+		CommandContext ctx(&db_, 0);
+		StringFamily::ClearDatabase(&ctx);
 	}
 
 	std::string Execute(const std::string& cmd, const std::vector<std::string>& args) {
@@ -18,10 +21,12 @@ protected:
 		for (const auto& arg : args) {
 			full_args.push_back(CompactObj::fromKey(arg));
 		}
-		return registry_->execute(full_args);
+		CommandContext ctx(&db_, db_.CurrentDB());
+		return registry_->execute(full_args, &ctx);
 	}
 
 	CommandRegistry* registry_;
+	Database db_;
 };
 
 TEST_F(StringFamilyTest, SetAndGet) {

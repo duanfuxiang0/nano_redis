@@ -9,7 +9,6 @@ CMakeFiles/
 cmake_install.cmake
 compile_commands.json
 Makefile
-third_party/
 valkey
 valkey/
 dragonfly

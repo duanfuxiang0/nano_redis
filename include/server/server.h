@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "core/database.h"
+#include "core/command_context.h"
 #include "core/compact_obj.h"
 #include "command/string_family.h"
 #include "command/hash_family.h"

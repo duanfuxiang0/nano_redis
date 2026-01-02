@@ -1,43 +1,31 @@
 #include "command/list_family.h"
-#include "server/server.h"
+#include "core/command_context.h"
 #include "protocol/resp_parser.h"
 #include <cstdlib>
 #include <sstream>
 #include <vector>
 #include <algorithm>
 
-static Database* g_db = nullptr;
-
-namespace {
-	Database* GetDatabase() {
-		return g_db;
-	}
-} // namespace
-
-void ListFamily::SetDatabase(Database* db) {
-	g_db = db;
-}
-
 void ListFamily::Register(CommandRegistry* registry) {
-	registry->register_command("LPUSH", LPush);
-	registry->register_command("RPUSH", RPush);
-	registry->register_command("LPOP", LPop);
-	registry->register_command("RPOP", RPop);
-	registry->register_command("LLEN", LLen);
-	registry->register_command("LINDEX", LIndex);
-	registry->register_command("LSET", LSet);
-	registry->register_command("LRANGE", LRange);
-	registry->register_command("LTRIM", LTrim);
-	registry->register_command("LREM", LRem);
-	registry->register_command("LINSERT", LInsert);
+	registry->register_command_with_context("LPUSH", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LPush(args, ctx); });
+	registry->register_command_with_context("RPUSH", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return RPush(args, ctx); });
+	registry->register_command_with_context("LPOP", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LPop(args, ctx); });
+	registry->register_command_with_context("RPOP", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return RPop(args, ctx); });
+	registry->register_command_with_context("LLEN", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LLen(args, ctx); });
+	registry->register_command_with_context("LINDEX", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LIndex(args, ctx); });
+	registry->register_command_with_context("LSET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LSet(args, ctx); });
+	registry->register_command_with_context("LRANGE", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LRange(args, ctx); });
+	registry->register_command_with_context("LTRIM", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LTrim(args, ctx); });
+	registry->register_command_with_context("LREM", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LRem(args, ctx); });
+	registry->register_command_with_context("LINSERT", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LInsert(args, ctx); });
 }
 
-std::string ListFamily::LPush(const std::vector<CompactObj>& args) {
+std::string ListFamily::LPush(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for LPUSH");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* list_obj = db->Find(key);
 
@@ -61,12 +49,12 @@ std::string ListFamily::LPush(const std::vector<CompactObj>& args) {
 	return RESPParser::make_integer(static_cast<int64_t>(list->size()));
 }
 
-std::string ListFamily::RPush(const std::vector<CompactObj>& args) {
+std::string ListFamily::RPush(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for RPUSH");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* list_obj = db->Find(key);
 
@@ -90,12 +78,12 @@ std::string ListFamily::RPush(const std::vector<CompactObj>& args) {
 	return RESPParser::make_integer(static_cast<int64_t>(list->size()));
 }
 
-std::string ListFamily::LPop(const std::vector<CompactObj>& args) {
+std::string ListFamily::LPop(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 1 || args.size() > 2) {
 		return RESPParser::make_error("wrong number of arguments for LPOP");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* list_obj = db->Find(key);
 
@@ -138,12 +126,12 @@ std::string ListFamily::LPop(const std::vector<CompactObj>& args) {
 	return result;
 }
 
-std::string ListFamily::RPop(const std::vector<CompactObj>& args) {
+std::string ListFamily::RPop(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 1 || args.size() > 2) {
 		return RESPParser::make_error("wrong number of arguments for RPOP");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* list_obj = db->Find(key);
 
@@ -186,12 +174,12 @@ std::string ListFamily::RPop(const std::vector<CompactObj>& args) {
 	return result;
 }
 
-std::string ListFamily::LLen(const std::vector<CompactObj>& args) {
+std::string ListFamily::LLen(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 1) {
 		return RESPParser::make_error("wrong number of arguments for LLEN");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* list_obj = db->Find(key);
 
@@ -203,12 +191,12 @@ std::string ListFamily::LLen(const std::vector<CompactObj>& args) {
 	return RESPParser::make_integer(static_cast<int64_t>(list->size()));
 }
 
-std::string ListFamily::LIndex(const std::vector<CompactObj>& args) {
+std::string ListFamily::LIndex(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for LINDEX");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* list_obj = db->Find(key);
 
@@ -234,12 +222,12 @@ std::string ListFamily::LIndex(const std::vector<CompactObj>& args) {
 	return RESPParser::make_bulk_string(list->at(index).toString());
 }
 
-std::string ListFamily::LSet(const std::vector<CompactObj>& args) {
+std::string ListFamily::LSet(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for LSET");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* list_obj = db->Find(key);
 
@@ -266,12 +254,12 @@ std::string ListFamily::LSet(const std::vector<CompactObj>& args) {
 	return RESPParser::make_simple_string("OK");
 }
 
-std::string ListFamily::LRange(const std::vector<CompactObj>& args) {
+std::string ListFamily::LRange(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for LRANGE");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* list_obj = db->Find(key);
 
@@ -321,12 +309,12 @@ std::string ListFamily::LRange(const std::vector<CompactObj>& args) {
 	return result;
 }
 
-std::string ListFamily::LTrim(const std::vector<CompactObj>& args) {
+std::string ListFamily::LTrim(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for LTRIM");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* list_obj = db->Find(key);
 
@@ -374,12 +362,12 @@ std::string ListFamily::LTrim(const std::vector<CompactObj>& args) {
 	return RESPParser::make_simple_string("OK");
 }
 
-std::string ListFamily::LRem(const std::vector<CompactObj>& args) {
+std::string ListFamily::LRem(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for LREM");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* list_obj = db->Find(key);
 
@@ -434,12 +422,12 @@ std::string ListFamily::LRem(const std::vector<CompactObj>& args) {
 	return RESPParser::make_integer(removed);
 }
 
-std::string ListFamily::LInsert(const std::vector<CompactObj>& args) {
+std::string ListFamily::LInsert(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 4) {
 		return RESPParser::make_error("wrong number of arguments for LINSERT");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* list_obj = db->Find(key);
 

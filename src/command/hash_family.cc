@@ -1,44 +1,32 @@
 #include "command/hash_family.h"
-#include "server/server.h"
+#include "core/command_context.h"
 #include "protocol/resp_parser.h"
 #include <cstdlib>
 #include <sstream>
 
-static Database* g_db = nullptr;
-
-namespace {
-	Database* GetDatabase() {
-		return g_db;
-	}
-} // namespace
-
-void HashFamily::SetDatabase(Database* db) {
-	g_db = db;
-}
-
 void HashFamily::Register(CommandRegistry* registry) {
-	registry->register_command("HSET", HSet);
-	registry->register_command("HGET", HGet);
-	registry->register_command("HMSET", HMSet);
-	registry->register_command("HMGET", HMGet);
-	registry->register_command("HDEL", HDel);
-	registry->register_command("HEXISTS", HExists);
-	registry->register_command("HLEN", HLen);
-	registry->register_command("HKEYS", HKeys);
-	registry->register_command("HVALS", HVals);
-	registry->register_command("HGETALL", HGetAll);
-	registry->register_command("HINCRBY", HIncrBy);
-	registry->register_command("HSTRLEN", HStrLen);
-	registry->register_command("HRANDFIELD", HRandField);
-	registry->register_command("HSCAN", HScan);
+	registry->register_command_with_context("HSET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HSet(args, ctx); });
+	registry->register_command_with_context("HGET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HGet(args, ctx); });
+	registry->register_command_with_context("HMSET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HMSet(args, ctx); });
+	registry->register_command_with_context("HMGET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HMGet(args, ctx); });
+	registry->register_command_with_context("HDEL", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HDel(args, ctx); });
+	registry->register_command_with_context("HEXISTS", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HExists(args, ctx); });
+	registry->register_command_with_context("HLEN", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HLen(args, ctx); });
+	registry->register_command_with_context("HKEYS", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HKeys(args, ctx); });
+	registry->register_command_with_context("HVALS", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HVals(args, ctx); });
+	registry->register_command_with_context("HGETALL", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HGetAll(args, ctx); });
+	registry->register_command_with_context("HINCRBY", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HIncrBy(args, ctx); });
+	registry->register_command_with_context("HSTRLEN", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HStrLen(args, ctx); });
+	registry->register_command_with_context("HRANDFIELD", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HRandField(args, ctx); });
+	registry->register_command_with_context("HSCAN", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HScan(args, ctx); });
 }
 
-std::string HashFamily::HSet(const std::vector<CompactObj>& args) {
+std::string HashFamily::HSet(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 3 || (args.size() % 2) != 1) {
 		return RESPParser::make_error("wrong number of arguments for HSET");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* hash_obj = db->Find(key);
 
@@ -64,12 +52,12 @@ std::string HashFamily::HSet(const std::vector<CompactObj>& args) {
 	return RESPParser::make_simple_string("OK");
 }
 
-std::string HashFamily::HGet(const std::vector<CompactObj>& args) {
+std::string HashFamily::HGet(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for HGET");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* hash_obj = db->Find(key);
 
@@ -88,12 +76,12 @@ std::string HashFamily::HGet(const std::vector<CompactObj>& args) {
 	return RESPParser::make_bulk_string(it->second);
 }
 
-std::string HashFamily::HMSet(const std::vector<CompactObj>& args) {
+std::string HashFamily::HMSet(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 3 || args.size() % 2 != 1) {
 		return RESPParser::make_error("wrong number of arguments for HMSET");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* hash_obj = db->Find(key);
 
@@ -119,12 +107,12 @@ std::string HashFamily::HMSet(const std::vector<CompactObj>& args) {
 	return RESPParser::make_simple_string("OK");
 }
 
-std::string HashFamily::HMGet(const std::vector<CompactObj>& args) {
+std::string HashFamily::HMGet(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for HMGET");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* hash_obj = db->Find(key);
 
@@ -152,12 +140,12 @@ std::string HashFamily::HMGet(const std::vector<CompactObj>& args) {
 	return result;
 }
 
-std::string HashFamily::HDel(const std::vector<CompactObj>& args) {
+std::string HashFamily::HDel(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for HDEL");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* hash_obj = db->Find(key);
 
@@ -178,12 +166,12 @@ std::string HashFamily::HDel(const std::vector<CompactObj>& args) {
 	return RESPParser::make_integer(deleted);
 }
 
-std::string HashFamily::HExists(const std::vector<CompactObj>& args) {
+std::string HashFamily::HExists(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for HEXISTS");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* hash_obj = db->Find(key);
 
@@ -197,12 +185,12 @@ std::string HashFamily::HExists(const std::vector<CompactObj>& args) {
 	return RESPParser::make_integer(hash_table->count(field) ? 1 : 0);
 }
 
-std::string HashFamily::HLen(const std::vector<CompactObj>& args) {
+std::string HashFamily::HLen(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 1) {
 		return RESPParser::make_error("wrong number of arguments for HLEN");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* hash_obj = db->Find(key);
 
@@ -214,12 +202,12 @@ std::string HashFamily::HLen(const std::vector<CompactObj>& args) {
 	return RESPParser::make_integer(static_cast<int64_t>(hash_table->size()));
 }
 
-std::string HashFamily::HKeys(const std::vector<CompactObj>& args) {
+std::string HashFamily::HKeys(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 1) {
 		return RESPParser::make_error("wrong number of arguments for HKEYS");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* hash_obj = db->Find(key);
 
@@ -237,12 +225,12 @@ std::string HashFamily::HKeys(const std::vector<CompactObj>& args) {
 	return result;
 }
 
-std::string HashFamily::HVals(const std::vector<CompactObj>& args) {
+std::string HashFamily::HVals(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 1) {
 		return RESPParser::make_error("wrong number of arguments for HVALS");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* hash_obj = db->Find(key);
 
@@ -260,12 +248,12 @@ std::string HashFamily::HVals(const std::vector<CompactObj>& args) {
 	return result;
 }
 
-std::string HashFamily::HGetAll(const std::vector<CompactObj>& args) {
+std::string HashFamily::HGetAll(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 1) {
 		return RESPParser::make_error("wrong number of arguments for HGETALL");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* hash_obj = db->Find(key);
 
@@ -284,12 +272,12 @@ std::string HashFamily::HGetAll(const std::vector<CompactObj>& args) {
 	return result;
 }
 
-std::string HashFamily::HIncrBy(const std::vector<CompactObj>& args) {
+std::string HashFamily::HIncrBy(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for HINCRBY");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* hash_obj = db->Find(key);
 
@@ -324,12 +312,12 @@ std::string HashFamily::HIncrBy(const std::vector<CompactObj>& args) {
 	return RESPParser::make_bulk_string(std::to_string(current));
 }
 
-std::string HashFamily::HScan(const std::vector<CompactObj>& args) {
+std::string HashFamily::HScan(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for HSCAN");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* hash_obj = db->Find(key);
 
@@ -370,12 +358,12 @@ std::string HashFamily::HScan(const std::vector<CompactObj>& args) {
 	return result;
 }
 
-std::string HashFamily::HStrLen(const std::vector<CompactObj>& args) {
+std::string HashFamily::HStrLen(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for HSTRLEN");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* hash_obj = db->Find(key);
 
@@ -394,12 +382,12 @@ std::string HashFamily::HStrLen(const std::vector<CompactObj>& args) {
 	return RESPParser::make_integer(static_cast<int64_t>(it->second.length()));
 }
 
-std::string HashFamily::HRandField(const std::vector<CompactObj>& args) {
+std::string HashFamily::HRandField(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 1 || args.size() > 2) {
 		return RESPParser::make_error("wrong number of arguments for HRANDFIELD");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* hash_obj = db->Find(key);
 

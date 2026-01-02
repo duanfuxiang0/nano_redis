@@ -1,45 +1,33 @@
 #include "command/set_family.h"
-#include "server/server.h"
+#include "core/command_context.h"
 #include "protocol/resp_parser.h"
 #include <cstdlib>
 #include <sstream>
 #include <vector>
 #include <algorithm>
 
-static Database* g_db = nullptr;
-
-namespace {
-	Database* GetDatabase() {
-		return g_db;
-	}
-} // namespace
-
-void SetFamily::SetDatabase(Database* db) {
-	g_db = db;
-}
-
 void SetFamily::Register(CommandRegistry* registry) {
-	registry->register_command("SADD", SAdd);
-	registry->register_command("SREM", SRem);
-	registry->register_command("SPOP", SPop);
-	registry->register_command("SMEMBERS", SMembers);
-	registry->register_command("SCARD", SCard);
-	registry->register_command("SISMEMBER", SIsMember);
-	registry->register_command("SMISMEMBER", SMIsMember);
-	registry->register_command("SINTER", SInter);
-	registry->register_command("SUNION", SUnion);
-	registry->register_command("SDIFF", SDiff);
-	registry->register_command("SSCAN", SScan);
-	registry->register_command("SRANDMEMBER", SRandMember);
-	registry->register_command("SMOVE", SMove);
+	registry->register_command_with_context("SADD", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SAdd(args, ctx); });
+	registry->register_command_with_context("SREM", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SRem(args, ctx); });
+	registry->register_command_with_context("SPOP", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SPop(args, ctx); });
+	registry->register_command_with_context("SMEMBERS", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SMembers(args, ctx); });
+	registry->register_command_with_context("SCARD", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SCard(args, ctx); });
+	registry->register_command_with_context("SISMEMBER", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SIsMember(args, ctx); });
+	registry->register_command_with_context("SMISMEMBER", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SMIsMember(args, ctx); });
+	registry->register_command_with_context("SINTER", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SInter(args, ctx); });
+	registry->register_command_with_context("SUNION", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SUnion(args, ctx); });
+	registry->register_command_with_context("SDIFF", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SDiff(args, ctx); });
+	registry->register_command_with_context("SSCAN", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SScan(args, ctx); });
+	registry->register_command_with_context("SRANDMEMBER", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SRandMember(args, ctx); });
+	registry->register_command_with_context("SMOVE", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SMove(args, ctx); });
 }
 
-std::string SetFamily::SAdd(const std::vector<CompactObj>& args) {
+std::string SetFamily::SAdd(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for SADD");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* set_obj = db->Find(key);
 
@@ -66,12 +54,12 @@ std::string SetFamily::SAdd(const std::vector<CompactObj>& args) {
 	return RESPParser::make_integer(added);
 }
 
-std::string SetFamily::SRem(const std::vector<CompactObj>& args) {
+std::string SetFamily::SRem(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for SREM");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* set_obj = db->Find(key);
 
@@ -95,12 +83,12 @@ std::string SetFamily::SRem(const std::vector<CompactObj>& args) {
 	return RESPParser::make_integer(removed);
 }
 
-std::string SetFamily::SPop(const std::vector<CompactObj>& args) {
+std::string SetFamily::SPop(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 1 || args.size() > 2) {
 		return RESPParser::make_error("wrong number of arguments for SPOP");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* set_obj = db->Find(key);
 
@@ -135,12 +123,12 @@ std::string SetFamily::SPop(const std::vector<CompactObj>& args) {
 	return result;
 }
 
-std::string SetFamily::SMembers(const std::vector<CompactObj>& args) {
+std::string SetFamily::SMembers(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 1) {
 		return RESPParser::make_error("wrong number of arguments for SMEMBERS");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* set_obj = db->Find(key);
 
@@ -158,12 +146,12 @@ std::string SetFamily::SMembers(const std::vector<CompactObj>& args) {
 	return result;
 }
 
-std::string SetFamily::SCard(const std::vector<CompactObj>& args) {
+std::string SetFamily::SCard(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 1) {
 		return RESPParser::make_error("wrong number of arguments for SCARD");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* set_obj = db->Find(key);
 
@@ -175,12 +163,12 @@ std::string SetFamily::SCard(const std::vector<CompactObj>& args) {
 	return RESPParser::make_integer(static_cast<int64_t>(set->size()));
 }
 
-std::string SetFamily::SIsMember(const std::vector<CompactObj>& args) {
+std::string SetFamily::SIsMember(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for SISMEMBER");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* set_obj = db->Find(key);
 
@@ -194,12 +182,12 @@ std::string SetFamily::SIsMember(const std::vector<CompactObj>& args) {
 	return RESPParser::make_integer(set->count(member) ? 1 : 0);
 }
 
-std::string SetFamily::SMIsMember(const std::vector<CompactObj>& args) {
+std::string SetFamily::SMIsMember(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for SMISMEMBER");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* set_obj = db->Find(key);
 
@@ -221,7 +209,7 @@ std::string SetFamily::SMIsMember(const std::vector<CompactObj>& args) {
 	return result;
 }
 
-std::string SetFamily::SInter(const std::vector<CompactObj>& args) {
+std::string SetFamily::SInter(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 1) {
 		return RESPParser::make_error("wrong number of arguments for SINTER");
 	}
@@ -230,7 +218,7 @@ std::string SetFamily::SInter(const std::vector<CompactObj>& args) {
 		return RESPParser::make_array(0);
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 
 	std::vector<SetType*> sets;
 	for (size_t i = 0; i < args.size(); i++) {
@@ -264,12 +252,12 @@ std::string SetFamily::SInter(const std::vector<CompactObj>& args) {
 	return result;
 }
 
-std::string SetFamily::SUnion(const std::vector<CompactObj>& args) {
+std::string SetFamily::SUnion(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 1) {
 		return RESPParser::make_error("wrong number of arguments for SUNION");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 
 	SetType union_set;
 	for (size_t i = 0; i < args.size(); i++) {
@@ -290,12 +278,12 @@ std::string SetFamily::SUnion(const std::vector<CompactObj>& args) {
 	return result;
 }
 
-std::string SetFamily::SDiff(const std::vector<CompactObj>& args) {
+std::string SetFamily::SDiff(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 1) {
 		return RESPParser::make_error("wrong number of arguments for SDIFF");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* set_obj = db->Find(key);
 
@@ -325,12 +313,12 @@ std::string SetFamily::SDiff(const std::vector<CompactObj>& args) {
 	return result;
 }
 
-std::string SetFamily::SScan(const std::vector<CompactObj>& args) {
+std::string SetFamily::SScan(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for SSCAN");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* set_obj = db->Find(key);
 
@@ -366,12 +354,12 @@ std::string SetFamily::SScan(const std::vector<CompactObj>& args) {
 	return result;
 }
 
-std::string SetFamily::SRandMember(const std::vector<CompactObj>& args) {
+std::string SetFamily::SRandMember(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 1 || args.size() > 2) {
 		return RESPParser::make_error("wrong number of arguments for SRANDMEMBER");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& key = args[0];
 	auto* set_obj = db->Find(key);
 
@@ -412,12 +400,12 @@ std::string SetFamily::SRandMember(const std::vector<CompactObj>& args) {
 	return result;
 }
 
-std::string SetFamily::SMove(const std::vector<CompactObj>& args) {
+std::string SetFamily::SMove(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for SMOVE");
 	}
 
-	auto* db = GetDatabase();
+	auto* db = ctx->GetDB();
 	const CompactObj& src_key = args[0];
 	const CompactObj& dest_key = args[1];
 	const std::string member = args[2].toString();

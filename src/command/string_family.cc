@@ -1,53 +1,41 @@
 #include "command/string_family.h"
 #include "server/connection.h"
 #include "core/database.h"
+#include "core/command_context.h"
 #include "core/compact_obj.h"
+#include "server/sharding.h"
 #include "protocol/resp_parser.h"
 #include <photon/common/alog.h>
 #include <iostream>
 #include <cstdlib>
-
-namespace {
-	Database* g_database = nullptr;
-
-	Database* GetDatabase() {
-		if (g_database) {
-			return g_database;
-		}
-		static thread_local Database database;
-		return &database;
-	}
-} // namespace
-
-void StringFamily::SetDatabase(Database* db) {
-	g_database = db;
-}
+#include <unordered_map>
+#include <optional>
 
 void StringFamily::Register(CommandRegistry* registry) {
-	registry->register_command("SET", [](const std::vector<CompactObj>& args) { return Set(args); });
-	registry->register_command("GET", [](const std::vector<CompactObj>& args) { return Get(args); });
-	registry->register_command("DEL", [](const std::vector<CompactObj>& args) { return Del(args); });
-	registry->register_command("EXISTS", [](const std::vector<CompactObj>& args) { return Exists(args); });
-	registry->register_command("MSET", [](const std::vector<CompactObj>& args) { return MSet(args); });
-	registry->register_command("MGET", [](const std::vector<CompactObj>& args) { return MGet(args); });
-	registry->register_command("INCR", [](const std::vector<CompactObj>& args) { return Incr(args); });
-	registry->register_command("DECR", [](const std::vector<CompactObj>& args) { return Decr(args); });
-	registry->register_command("INCRBY", [](const std::vector<CompactObj>& args) { return IncrBy(args); });
-	registry->register_command("DECRBY", [](const std::vector<CompactObj>& args) { return DecrBy(args); });
-	registry->register_command("APPEND", [](const std::vector<CompactObj>& args) { return Append(args); });
-	registry->register_command("STRLEN", [](const std::vector<CompactObj>& args) { return StrLen(args); });
-	registry->register_command("GETRANGE", [](const std::vector<CompactObj>& args) { return GetRange(args); });
-	registry->register_command("SETRANGE", [](const std::vector<CompactObj>& args) { return SetRange(args); });
-	registry->register_command("SELECT", [](const std::vector<CompactObj>& args) { return Select(args); });
-	registry->register_command("KEYS", [](const std::vector<CompactObj>& args) { return Keys(args); });
-	registry->register_command(
-	    "PING", [](const std::vector<CompactObj>& args) { return RESPParser::make_simple_string("PONG"); });
-	registry->register_command(
-	    "QUIT", [](const std::vector<CompactObj>& args) { return RESPParser::make_simple_string("OK"); });
+	registry->register_command_with_context("SET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Set(args, ctx); });
+	registry->register_command_with_context("GET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Get(args, ctx); });
+	registry->register_command_with_context("DEL", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Del(args, ctx); });
+	registry->register_command_with_context("EXISTS", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Exists(args, ctx); });
+	registry->register_command_with_context("MSET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return MSet(args, ctx); });
+	registry->register_command_with_context("MGET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return MGet(args, ctx); });
+	registry->register_command_with_context("INCR", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Incr(args, ctx); });
+	registry->register_command_with_context("DECR", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Decr(args, ctx); });
+	registry->register_command_with_context("INCRBY", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return IncrBy(args, ctx); });
+	registry->register_command_with_context("DECRBY", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return DecrBy(args, ctx); });
+	registry->register_command_with_context("APPEND", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Append(args, ctx); });
+	registry->register_command_with_context("STRLEN", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return StrLen(args, ctx); });
+	registry->register_command_with_context("GETRANGE", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return GetRange(args, ctx); });
+	registry->register_command_with_context("SETRANGE", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SetRange(args, ctx); });
+	registry->register_command_with_context("SELECT", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Select(args, ctx); });
+	registry->register_command_with_context("KEYS", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Keys(args, ctx); });
+	registry->register_command_with_context(
+	    "PING", [](const std::vector<CompactObj>&, CommandContext*) { return RESPParser::make_simple_string("PONG"); });
+	registry->register_command_with_context(
+	    "QUIT", [](const std::vector<CompactObj>&, CommandContext*) { return RESPParser::make_simple_string("OK"); });
 }
 
-std::string StringFamily::Set(const std::vector<CompactObj>& args) {
-	auto* db = GetDatabase();
+std::string StringFamily::Set(const std::vector<CompactObj>& args, CommandContext* ctx) {
+	auto* db = ctx->GetDB();
 
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for 'SET'");
@@ -60,8 +48,8 @@ std::string StringFamily::Set(const std::vector<CompactObj>& args) {
 	return RESPParser::make_simple_string("OK");
 }
 
-std::string StringFamily::Get(const std::vector<CompactObj>& args) {
-	auto* db = GetDatabase();
+std::string StringFamily::Get(const std::vector<CompactObj>& args, CommandContext* ctx) {
+	auto* db = ctx->GetDB();
 
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for 'GET'");
@@ -75,8 +63,8 @@ std::string StringFamily::Get(const std::vector<CompactObj>& args) {
 	}
 }
 
-std::string StringFamily::Del(const std::vector<CompactObj>& args) {
-	auto* db = GetDatabase();
+std::string StringFamily::Del(const std::vector<CompactObj>& args, CommandContext* ctx) {
+	auto* db = ctx->GetDB();
 
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for 'DEL'");
@@ -92,8 +80,8 @@ std::string StringFamily::Del(const std::vector<CompactObj>& args) {
 	return RESPParser::make_integer(count);
 }
 
-std::string StringFamily::Exists(const std::vector<CompactObj>& args) {
-	auto* db = GetDatabase();
+std::string StringFamily::Exists(const std::vector<CompactObj>& args, CommandContext* ctx) {
+	auto* db = ctx->GetDB();
 
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for 'EXISTS'");
@@ -109,32 +97,86 @@ std::string StringFamily::Exists(const std::vector<CompactObj>& args) {
 	return RESPParser::make_integer(count);
 }
 
-std::string StringFamily::MSet(const std::vector<CompactObj>& args) {
-	auto* db = GetDatabase();
-
+std::string StringFamily::MSet(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 3 || (args.size() - 1) % 2 != 0) {
 		return RESPParser::make_error("wrong number of arguments for 'MSET'");
 	}
 
+	size_t num_pairs = (args.size() - 1) / 2;
+
+	if (ctx->IsSingleShard()) {
+		auto* db = ctx->GetDB();
+		for (size_t i = 1; i < args.size(); i += 2) {
+			db->Set(args[i], CompactObj(args[i + 1]));
+		}
+		return RESPParser::make_simple_string("OK");
+	}
+
+	std::unordered_map<size_t, std::vector<std::pair<CompactObj, CompactObj>>> shard_to_pairs;
+
 	for (size_t i = 1; i < args.size(); i += 2) {
-		db->Set(args[i], CompactObj(args[i + 1]));
+		std::string key = args[i].toString();
+		size_t shard_id = Shard(key, ctx->GetShardCount());
+
+		shard_to_pairs[shard_id].emplace_back(args[i], args[i + 1]);
+	}
+
+	for (const auto& [shard_id, pairs] : shard_to_pairs) {
+		for (const auto& [key, value] : pairs) {
+			ctx->GetShardDB(shard_id)->Set(key, CompactObj(value));
+		}
 	}
 
 	return RESPParser::make_simple_string("OK");
 }
 
-std::string StringFamily::MGet(const std::vector<CompactObj>& args) {
-	auto* db = GetDatabase();
-
+std::string StringFamily::MGet(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for 'MGET'");
 	}
 
-	std::string result = RESPParser::make_array(args.size() - 1);
+	size_t num_keys = args.size() - 1;
+
+	if (ctx->IsSingleShard()) {
+		auto* db = ctx->GetDB();
+		std::string result = RESPParser::make_array(num_keys);
+		for (size_t i = 1; i < args.size(); ++i) {
+			auto val = db->Get(args[i]);
+			if (val) {
+				result += RESPParser::make_bulk_string(*val);
+			} else {
+				result += RESPParser::make_null_bulk_string();
+			}
+		}
+		return result;
+	}
+
+	std::unordered_map<size_t, std::vector<size_t>> shard_to_indices;
+	std::unordered_map<size_t, std::vector<CompactObj>> shard_to_keys;
+
 	for (size_t i = 1; i < args.size(); ++i) {
-		auto val = db->Get(args[i]);
-		if (val) {
-			result += RESPParser::make_bulk_string(*val);
+		std::string key = args[i].toString();
+		size_t shard_id = Shard(key, ctx->GetShardCount());
+
+		shard_to_indices[shard_id].push_back(i - 1);
+		shard_to_keys[shard_id].push_back(args[i]);
+	}
+
+	std::vector<std::optional<std::string>> final_values(num_keys);
+
+	for (const auto& [shard_id, indices] : shard_to_indices) {
+		const auto& keys = shard_to_keys[shard_id];
+
+		for (size_t i = 0; i < indices.size(); ++i) {
+			size_t original_index = indices[i];
+			final_values[original_index] = ctx->GetShardDB(shard_id)->Get(keys[i]);
+		}
+	}
+
+	std::string result = RESPParser::make_array(num_keys);
+	for (size_t i = 0; i < num_keys; ++i) {
+		if (final_values[i]) {
+			result += RESPParser::make_bulk_string(*final_values[i]);
 		} else {
 			result += RESPParser::make_null_bulk_string();
 		}
@@ -143,31 +185,27 @@ std::string StringFamily::MGet(const std::vector<CompactObj>& args) {
 	return result;
 }
 
-std::string StringFamily::Incr(const std::vector<CompactObj>& args) {
-	auto* db = GetDatabase();
-
+std::string StringFamily::Incr(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for 'INCR'");
 	}
 
 	std::vector<CompactObj> incr_args = {args[0], args[1], CompactObj::fromInt(1)};
-	return IncrBy(incr_args);
+	return IncrBy(incr_args, ctx);
 }
 
-std::string StringFamily::Decr(const std::vector<CompactObj>& args) {
-	auto* db = GetDatabase();
-
+std::string StringFamily::Decr(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for 'DECR'");
 	}
 
 	std::string neg_one = "-1";
 	std::vector<CompactObj> incr_args = {args[0], args[1], CompactObj::fromKey(neg_one)};
-	return IncrBy(incr_args);
+	return IncrBy(incr_args, ctx);
 }
 
-std::string StringFamily::IncrBy(const std::vector<CompactObj>& args) {
-	auto* db = GetDatabase();
+std::string StringFamily::IncrBy(const std::vector<CompactObj>& args, CommandContext* ctx) {
+	auto* db = ctx->GetDB();
 
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for 'INCRBY'");
@@ -188,20 +226,18 @@ std::string StringFamily::IncrBy(const std::vector<CompactObj>& args) {
 	return RESPParser::make_integer(new_value);
 }
 
-std::string StringFamily::DecrBy(const std::vector<CompactObj>& args) {
-	auto* db = GetDatabase();
-
+std::string StringFamily::DecrBy(const std::vector<CompactObj>& args, CommandContext* ctx) {
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for 'DECRBY'");
 	}
 
 	std::string neg_val = "-" + args[2].toString();
 	std::vector<CompactObj> incr_args = {args[0], args[1], CompactObj::fromKey(neg_val)};
-	return IncrBy(incr_args);
+	return IncrBy(incr_args, ctx);
 }
 
-std::string StringFamily::Append(const std::vector<CompactObj>& args) {
-	auto* db = GetDatabase();
+std::string StringFamily::Append(const std::vector<CompactObj>& args, CommandContext* ctx) {
+	auto* db = ctx->GetDB();
 
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for 'APPEND'");
@@ -222,8 +258,8 @@ std::string StringFamily::Append(const std::vector<CompactObj>& args) {
 	return RESPParser::make_integer(new_value.length());
 }
 
-std::string StringFamily::StrLen(const std::vector<CompactObj>& args) {
-	auto* db = GetDatabase();
+std::string StringFamily::StrLen(const std::vector<CompactObj>& args, CommandContext* ctx) {
+	auto* db = ctx->GetDB();
 
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for 'STRLEN'");
@@ -237,8 +273,8 @@ std::string StringFamily::StrLen(const std::vector<CompactObj>& args) {
 	}
 }
 
-std::string StringFamily::GetRange(const std::vector<CompactObj>& args) {
-	auto* db = GetDatabase();
+std::string StringFamily::GetRange(const std::vector<CompactObj>& args, CommandContext* ctx) {
+	auto* db = ctx->GetDB();
 
 	if (args.size() != 4) {
 		return RESPParser::make_error("wrong number of arguments for 'GETRANGE'");
@@ -267,8 +303,8 @@ std::string StringFamily::GetRange(const std::vector<CompactObj>& args) {
 	return RESPParser::make_bulk_string(result);
 }
 
-std::string StringFamily::SetRange(const std::vector<CompactObj>& args) {
-	auto* db = GetDatabase();
+std::string StringFamily::SetRange(const std::vector<CompactObj>& args, CommandContext* ctx) {
+	auto* db = ctx->GetDB();
 
 	if (args.size() != 4) {
 		return RESPParser::make_error("wrong number of arguments for 'SETRANGE'");
@@ -299,8 +335,8 @@ std::string StringFamily::SetRange(const std::vector<CompactObj>& args) {
 	return RESPParser::make_integer(new_value.length());
 }
 
-std::string StringFamily::Select(const std::vector<CompactObj>& args) {
-	auto* db = GetDatabase();
+std::string StringFamily::Select(const std::vector<CompactObj>& args, CommandContext* ctx) {
+	auto* db = ctx->GetDB();
 
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for 'SELECT'");
@@ -314,8 +350,8 @@ std::string StringFamily::Select(const std::vector<CompactObj>& args) {
 	return RESPParser::make_simple_string("OK");
 }
 
-std::string StringFamily::Keys(const std::vector<CompactObj>& args) {
-	auto* db = GetDatabase();
+std::string StringFamily::Keys(const std::vector<CompactObj>& args, CommandContext* ctx) {
+	auto* db = ctx->GetDB();
 
 	std::vector<std::string> keys = db->Keys();
 	std::string response = RESPParser::make_array(keys.size());
@@ -325,8 +361,8 @@ std::string StringFamily::Keys(const std::vector<CompactObj>& args) {
 	return response;
 }
 
-void StringFamily::ClearDatabase() {
-	auto* db = GetDatabase();
+void StringFamily::ClearDatabase(CommandContext* ctx) {
+	auto* db = ctx->GetDB();
 	db->ClearAll();
 }
 
