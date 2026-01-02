@@ -29,6 +29,8 @@ public:
 
 	size_t shard_id() const { return shard_id_; }
 
+	static EngineShard* tlocal() { return tlocal_shard_; }
+
 	void Start();
 	void Stop();
 	void Join();

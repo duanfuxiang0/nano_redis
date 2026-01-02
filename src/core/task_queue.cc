@@ -29,6 +29,12 @@ bool TaskQueue::enqueue(Task&& task) {
 	buffer_[pos] = std::move(task);
 	tail_.store(next_pos, std::memory_order_release);
 
+	uint64_t value = 1;
+	ssize_t ret = ::write(event_fd_, &value, sizeof(value));
+	if (ret < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+		LOG_ERROR("Failed to write to eventfd: ", errno);
+	}
+
 	return true;
 }
 
@@ -48,8 +54,7 @@ bool TaskQueue::dequeue(Task& task) {
 
 void TaskQueue::ProcessTasks() {
 	uint64_t buf;
-	ssize_t ret;
-	while ((ret = ::read(event_fd_, &buf, sizeof(buf))) > 0 || (ret < 0 && errno == EINTR)) {}
+	::read(event_fd_, &buf, sizeof(buf));
 
 	Task task;
 	while (dequeue(task)) {

@@ -92,14 +92,12 @@ add_executable(unit_tests
   tests/unit/hash_test.cc
   tests/unit/resp_parser_test.cc
   tests/unit/string_family_test.cc
-  tests/unit/hash_family_test.cc
-  tests/unit/set_family_test.cc
-  tests/unit/list_family_test.cc
-  tests/unit/set_family_test.cc
-  tests/unit/list_family_test.cc
-  tests/unit/task_queue_test.cc
-  tests/unit/sharding_test.cc
-  tests/unit/task_queue_await_test.cc
+	tests/unit/hash_family_test.cc
+	tests/unit/set_family_test.cc
+	tests/unit/list_family_test.cc
+	tests/unit/task_queue_test.cc
+	tests/unit/sharding_test.cc
+	tests/unit/task_queue_await_test.cc
 )
 target_link_libraries(unit_tests PRIVATE
   nano_redis

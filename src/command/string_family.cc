@@ -4,6 +4,8 @@
 #include "core/command_context.h"
 #include "core/compact_obj.h"
 #include "server/sharding.h"
+#include "server/engine_shard.h"
+#include "server/engine_shard_set.h"
 #include "protocol/resp_parser.h"
 #include <photon/common/alog.h>
 #include <iostream>
@@ -28,6 +30,8 @@ void StringFamily::Register(CommandRegistry* registry) {
 	registry->register_command_with_context("SETRANGE", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SetRange(args, ctx); });
 	registry->register_command_with_context("SELECT", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Select(args, ctx); });
 	registry->register_command_with_context("KEYS", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Keys(args, ctx); });
+	registry->register_command_with_context("FLUSHDB", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return FlushDB(args, ctx); });
+	registry->register_command_with_context("DBSIZE", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return DBSize(args, ctx); });
 	registry->register_command_with_context(
 	    "PING", [](const std::vector<CompactObj>&, CommandContext*) { return RESPParser::make_simple_string("PONG"); });
 	registry->register_command_with_context(
@@ -359,6 +363,51 @@ std::string StringFamily::Keys(const std::vector<CompactObj>& args, CommandConte
 		response += RESPParser::make_bulk_string(key);
 	}
 	return response;
+}
+
+std::string StringFamily::FlushDB(const std::vector<CompactObj>& args, CommandContext* ctx) {
+	if (!ctx->shard_set || ctx->IsSingleShard()) {
+		auto* db = ctx->GetDB();
+		db->ClearCurrentDB();
+		return RESPParser::make_simple_string("OK");
+	}
+
+	for (size_t shard_id = 0; shard_id < ctx->shard_set->size(); ++shard_id) {
+		ctx->shard_set->Add(shard_id, [db_index = ctx->GetDBIndex()]() {
+			EngineShard* shard = EngineShard::tlocal();
+			if (shard) {
+				auto& db = shard->GetDB();
+				db.Select(db_index);
+				db.ClearCurrentDB();
+			}
+		});
+	}
+
+	return RESPParser::make_simple_string("OK");
+}
+
+std::string StringFamily::DBSize(const std::vector<CompactObj>& args, CommandContext* ctx) {
+	if (!ctx->shard_set || ctx->IsSingleShard()) {
+		auto* db = ctx->GetDB();
+		size_t count = db->KeyCount();
+		return RESPParser::make_integer(static_cast<int64_t>(count));
+	}
+
+	size_t total_count = 0;
+	for (size_t shard_id = 0; shard_id < ctx->shard_set->size(); ++shard_id) {
+		size_t shard_count = ctx->shard_set->Await(shard_id, [db_index = ctx->GetDBIndex()]() -> size_t {
+			EngineShard* shard = EngineShard::tlocal();
+			if (shard) {
+				auto& db = shard->GetDB();
+				db.Select(db_index);
+				return db.KeyCount();
+			}
+			return 0;
+		});
+		total_count += shard_count;
+	}
+
+	return RESPParser::make_integer(static_cast<int64_t>(total_count));
 }
 
 void StringFamily::ClearDatabase(CommandContext* ctx) {

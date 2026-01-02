@@ -27,6 +27,8 @@ public:
 	static std::string SetRange(const std::vector<CompactObj>& args, CommandContext* ctx);
 	static std::string Select(const std::vector<CompactObj>& args, CommandContext* ctx);
 	static std::string Keys(const std::vector<CompactObj>& args, CommandContext* ctx);
+	static std::string FlushDB(const std::vector<CompactObj>& args, CommandContext* ctx);
+	static std::string DBSize(const std::vector<CompactObj>& args, CommandContext* ctx);
 	static void ClearDatabase(CommandContext* ctx);
 
 private:

@@ -31,8 +31,27 @@ public:
 		using RetType = decltype(func());
 
 		if constexpr (std::is_void<RetType>::value) {
-			func();
-			return;
+			std::exception_ptr exception_ptr = nullptr;
+			photon::Awaiter<photon::AutoContext> awaiter;
+
+			auto task = [&exception_ptr, &awaiter, &func]() {
+				try {
+					func();
+				} catch (...) {
+					exception_ptr = std::current_exception();
+				}
+				awaiter.resume();
+			};
+
+			if (!Add(std::move(task))) {
+				throw std::runtime_error("TaskQueue is full");
+			}
+
+			awaiter.suspend();
+
+			if (exception_ptr) {
+				std::rethrow_exception(exception_ptr);
+			}
 		} else {
 			std::optional<RetType> result_storage;
 			std::exception_ptr exception_ptr = nullptr;
