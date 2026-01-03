@@ -36,6 +36,13 @@ void StringFamily::Register(CommandRegistry* registry) {
 	    "PING", [](const std::vector<CompactObj>&, CommandContext*) { return RESPParser::make_simple_string("PONG"); });
 	registry->register_command_with_context(
 	    "QUIT", [](const std::vector<CompactObj>&, CommandContext*) { return RESPParser::make_simple_string("OK"); });
+	registry->register_command_with_context(
+	    "HELLO", [](const std::vector<CompactObj>& args, CommandContext*) { return Hello(args); });
+	registry->register_command_with_context(
+	    "COMMAND", [](const std::vector<CompactObj>&, CommandContext*) {
+	        // Return empty array for COMMAND (used by redis-cli for command discovery)
+	        return RESPParser::make_array(0);
+	    });
 }
 
 std::string StringFamily::Set(const std::vector<CompactObj>& args, CommandContext* ctx) {
@@ -431,4 +438,36 @@ int StringFamily::AdjustIndex(int index, int length) {
 		index = length - 1;
 	}
 	return index;
+}
+
+std::string StringFamily::Hello(const std::vector<CompactObj>& args) {
+	// HELLO [protover [AUTH username password] [SETNAME clientname]]
+	// Returns server information as a map (array of key-value pairs in RESP2)
+	int proto_ver = 2;  // Default to RESP2
+	if (args.size() > 1) {
+		proto_ver = ParseInt(args[1].toString());
+		if (proto_ver < 2 || proto_ver > 3) {
+			return RESPParser::make_error("NOPROTO unsupported protocol version");
+		}
+	}
+
+	// For now, we only support RESP2 (protocol version 2)
+	// Return a map as an array: [key1, val1, key2, val2, ...]
+	std::string response = RESPParser::make_array(14);  // 7 key-value pairs
+	response += RESPParser::make_bulk_string("server");
+	response += RESPParser::make_bulk_string("nano_redis");
+	response += RESPParser::make_bulk_string("version");
+	response += RESPParser::make_bulk_string("0.1.0");
+	response += RESPParser::make_bulk_string("proto");
+	response += RESPParser::make_integer(2);  // We only support RESP2
+	response += RESPParser::make_bulk_string("id");
+	response += RESPParser::make_integer(1);
+	response += RESPParser::make_bulk_string("mode");
+	response += RESPParser::make_bulk_string("standalone");
+	response += RESPParser::make_bulk_string("role");
+	response += RESPParser::make_bulk_string("master");
+	response += RESPParser::make_bulk_string("modules");
+	response += RESPParser::make_array(0);  // No modules
+
+	return response;
 }

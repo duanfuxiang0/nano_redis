@@ -13,9 +13,21 @@ endif()
 
 find_package(gflags REQUIRED)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error")
+# Save current CMAKE_CXX_FLAGS before adding photonlibos
+set(SAVED_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+
 set(PHOTON_ENABLE_URING ON CACHE BOOL "enable io_uring function" FORCE)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/photonlibos EXCLUDE_FROM_ALL)
+
+# Restore CMAKE_CXX_FLAGS and disable Werror for photon targets
+set(CMAKE_CXX_FLAGS ${SAVED_CMAKE_CXX_FLAGS})
+
+# Disable Werror for all photonlibos targets
+foreach(target photon_obj photon_shared photon_static easy_weak fstack_weak)
+  if(TARGET ${target})
+    target_compile_options(${target} PRIVATE -Wno-error -Wno-error=unused-parameter -Wno-error=deprecated-copy -Wno-error=deprecated-declarations)
+  endif()
+endforeach()
 
 set(ABSL_PROPAGATE_CXX_STD ON)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/abseil-cpp ${CMAKE_BINARY_DIR}/abseil-cpp EXCLUDE_FROM_ALL)

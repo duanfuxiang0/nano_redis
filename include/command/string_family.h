@@ -30,6 +30,7 @@ public:
 	static std::string FlushDB(const std::vector<CompactObj>& args, CommandContext* ctx);
 	static std::string DBSize(const std::vector<CompactObj>& args, CommandContext* ctx);
 	static void ClearDatabase(CommandContext* ctx);
+	static std::string Hello(const std::vector<CompactObj>& args);
 
 private:
 	static int64_t ParseInt(const std::string& s);

@@ -20,7 +20,7 @@ RedisServer::~RedisServer() {
 }
 
 std::string RedisServer::process_command(const std::vector<CompactObj>& args) {
-	CommandContext ctx(nullptr, nullptr, 1, store_.CurrentDB());
+	CommandContext ctx(&store_, store_.CurrentDB());
 	return CommandRegistry::instance().execute(args, &ctx);
 }
 

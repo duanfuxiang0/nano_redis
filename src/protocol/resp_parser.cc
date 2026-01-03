@@ -1,11 +1,12 @@
 #include "protocol/resp_parser.h"
 #include <photon/common/alog.h>
+#include <photon/net/socket.h>
 #include <cctype>
 #include <sstream>
 
 int RESPParser::fill_buffer() {
     if (buffer_pos_ >= buffer_size_) {
-        ssize_t n = stream_->read(buffer_, sizeof(buffer_));
+        ssize_t n = stream_->recv(buffer_, sizeof(buffer_));
         if (n <= 0) {
             return -1;
         }

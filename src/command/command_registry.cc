@@ -2,6 +2,8 @@
 #include "core/command_context.h"
 #include "core/compact_obj.h"
 #include <absl/container/flat_hash_map.h>
+#include <algorithm>
+#include <cctype>
 #include <string>
 #include <vector>
 
@@ -25,6 +27,10 @@ std::string CommandRegistry::execute(const std::vector<CompactObj>& args, Comman
 
 	const CompactObj& cmd_obj = args[0];
 	std::string cmd = cmd_obj.toString();
+
+	// Convert command to uppercase for case-insensitive matching
+	std::transform(cmd.begin(), cmd.end(), cmd.begin(),
+	               [](unsigned char c) { return std::toupper(c); });
 
 	auto it_with_ctx = handlers_with_context_.find(cmd);
 	if (it_with_ctx != handlers_with_context_.end()) {

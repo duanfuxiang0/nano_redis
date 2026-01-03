@@ -2,7 +2,7 @@
 
 #include <string>
 #include <vector>
-#include <photon/common/stream.h>
+#include <photon/net/socket.h>
 #include "core/compact_obj.h"
 
 class RESPParser {
@@ -18,7 +18,7 @@ public:
 		}
 	};
 
-	RESPParser(IStream* stream) : stream_(stream) {
+	RESPParser(photon::net::ISocketStream* stream) : stream_(stream) {
 	}
 
 	int parse_command(std::vector<CompactObj>& args);
@@ -41,7 +41,7 @@ private:
 	int fill_buffer();
 
 private:
-	IStream* stream_;
+	photon::net::ISocketStream* stream_;
 	char buffer_[1024];
 	size_t buffer_pos_ = 0;
 	size_t buffer_size_ = 0;
