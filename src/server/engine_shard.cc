@@ -8,6 +8,7 @@
 #include <photon/thread/thread11.h>
 #include <photon/net/socket.h>
 #include <photon/photon.h>
+#include <photon/io/fd-events.h>
 #include <netinet/in.h>
 #include <cstring>
 #include <unistd.h>
@@ -30,6 +31,9 @@ void EngineShard::Start() {
 
 void EngineShard::Stop() {
 	running_ = false;
+	if (server_) {
+		server_->terminate();
+	}
 }
 
 void EngineShard::Join() {
@@ -44,64 +48,63 @@ void EngineShard::EventLoop() {
 
 	tlocal_shard_ = this;
 
-	auto server = photon::net::new_tcp_socket_server();
-	if (server == nullptr) {
+	server_ = photon::net::new_tcp_socket_server();
+	if (server_ == nullptr) {
 		LOG_ERROR("Failed to create socket server");
 		return;
 	}
 
-	int ret = server->setsockopt<int>(SOL_SOCKET, SO_REUSEPORT, 1);
+	int ret = server_->setsockopt<int>(SOL_SOCKET, SO_REUSEPORT, 1);
 	if (ret < 0) {
-		delete server;
+		delete server_;
+		server_ = nullptr;
 		LOG_ERROR("Failed to set SO_REUSEPORT");
 		return;
 	}
 
 	LOG_INFO("EngineShard ", shard_id_, " SO_REUSEPORT set successfully");
 
-	if (server->bind_v4any(port_) < 0) {
-		delete server;
+	if (server_->bind_v4any(port_) < 0) {
+		delete server_;
+		server_ = nullptr;
 		LOG_ERROR("Failed to bind port");
 		return;
 	}
 
-	if (server->listen(128) < 0) {
-		delete server;
+	if (server_->listen(128) < 0) {
+		delete server_;
+		server_ = nullptr;
 		LOG_ERROR("Failed to listen");
 		return;
 	}
 
 	LOG_INFO("EngineShard ", shard_id_, " listening on port ", port_, " with SO_REUSEPORT");
 
-	photon::thread_create11([this, server]() {
-		while (running_) {
-			auto client_sock = server->accept();
-			if (client_sock) {
-				photon::thread_create11([this, client_sock]() {
-					HandleConnection(client_sock);
-					delete client_sock;
-				});
-			} else {
-				photon::thread_yield();
-			}
-		}
-	});
-
+	// Start task queue processing thread
 	photon::thread_create11([this]() {
 		uint64_t buf;
 		while (running_) {
-			ssize_t ret = read(task_queue_.event_fd(), &buf, sizeof(buf));
-			if (ret > 0) {
+			// Wait for eventfd to be readable using photon's async I/O
+			int ret = photon::wait_for_fd_readable(task_queue_.event_fd());
+			if (ret < 0) {
+				// Error or interrupted, yield and retry
+				photon::thread_usleep(1000);
+				continue;
+			}
+			// Now read and process tasks
+			ssize_t n = read(task_queue_.event_fd(), &buf, sizeof(buf));
+			if (n > 0) {
 				task_queue_.ProcessTasks();
 			}
 		}
 	});
 
-	while (running_) {
-		photon::thread_sleep(1);
-	}
+	// Use photon's built-in handler mechanism - similar to single-threaded mode
+	server_->set_handler({this, &EngineShard::HandleConnection});
+	server_->start_loop(true);  // Block here until terminated
 
-	delete server;
+	delete server_;
+	server_ = nullptr;
 }
 
 int EngineShard::HandleConnection(photon::net::ISocketStream* stream) {

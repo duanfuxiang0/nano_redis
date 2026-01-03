@@ -1,9 +1,19 @@
 #include "server/sharded_server.h"
+#include "command/command_registry.h"
+#include "command/string_family.h"
+#include "command/hash_family.h"
+#include "command/set_family.h"
+#include "command/list_family.h"
 #include <photon/common/alog.h>
 #include <photon/thread/st.h>
 
 ShardedServer::ShardedServer(size_t num_shards, int port)
     : shard_set_(new EngineShardSet(num_shards, port)), num_shards_(num_shards), port_(port) {
+	// Register commands
+	StringFamily::Register(&CommandRegistry::instance());
+	HashFamily::Register(&CommandRegistry::instance());
+	SetFamily::Register(&CommandRegistry::instance());
+	ListFamily::Register(&CommandRegistry::instance());
 }
 
 ShardedServer::~ShardedServer() {

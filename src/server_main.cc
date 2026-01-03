@@ -8,7 +8,7 @@
 #include "server/sharded_server.h"
 
 DEFINE_int32(port, 9527, "Server listen port");
-DEFINE_int32(num_shards, 1, "Number of shards");
+DEFINE_int32(num_shards, 8, "Number of shards");
 
 std::unique_ptr<RedisServer> redisserver;
 std::unique_ptr<ShardedServer> sharded_server;

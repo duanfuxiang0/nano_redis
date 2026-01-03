@@ -47,5 +47,6 @@ private:
 	EngineShardSet* shard_set_;
 	std::thread thread_;
 	std::atomic<bool> running_;
+	photon::net::ISocketServer* server_ = nullptr;
 	static __thread EngineShard* tlocal_shard_;
 };
