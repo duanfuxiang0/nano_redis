@@ -75,34 +75,105 @@ std::string StringFamily::Get(const std::vector<CompactObj>& args, CommandContex
 }
 
 std::string StringFamily::Del(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	auto* db = ctx->GetDB();
-
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for 'DEL'");
 	}
 
-	int count = 0;
-	for (size_t i = 1; i < args.size(); ++i) {
-		if (db->Del(args[i])) {
-			++count;
+	if (ctx->IsSingleShard() || ctx->shard_set == nullptr) {
+		auto* db = ctx->GetDB();
+		int count = 0;
+		for (size_t i = 1; i < args.size(); ++i) {
+			if (db->Del(args[i])) {
+				++count;
+			}
 		}
+		return RESPParser::make_integer(count);
+	}
+
+	struct KeyReq {
+		std::string key;
+	};
+
+	std::unordered_map<size_t, std::vector<KeyReq>> shard_to_keys;
+	shard_to_keys.reserve(args.size() - 1);
+
+	for (size_t i = 1; i < args.size(); ++i) {
+		std::string key = args[i].toString();
+		const size_t shard_id = Shard(key, ctx->GetShardCount());
+		shard_to_keys[shard_id].push_back(KeyReq{std::move(key)});
+	}
+
+	int count = 0;
+
+	for (auto& [shard_id, keys] : shard_to_keys) {
+		int shard_deleted = ctx->shard_set->Await(shard_id, [db_index = ctx->GetDBIndex(), keys = std::move(keys)]() mutable -> int {
+			EngineShard* shard = EngineShard::tlocal();
+			if (shard == nullptr) {
+				return 0;
+			}
+			auto& db = shard->GetDB();
+			db.Select(db_index);
+			int local_deleted = 0;
+			for (const auto& k : keys) {
+				if (db.Del(CompactObj::fromKey(k.key))) {
+					++local_deleted;
+				}
+			}
+			return local_deleted;
+		});
+		count += shard_deleted;
 	}
 
 	return RESPParser::make_integer(count);
 }
 
 std::string StringFamily::Exists(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	auto* db = ctx->GetDB();
-
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for 'EXISTS'");
 	}
 
-	int count = 0;
-	for (size_t i = 1; i < args.size(); ++i) {
-		if (db->Exists(args[i])) {
-			++count;
+	if (ctx->IsSingleShard() || ctx->shard_set == nullptr) {
+		auto* db = ctx->GetDB();
+		int count = 0;
+		for (size_t i = 1; i < args.size(); ++i) {
+			if (db->Exists(args[i])) {
+				++count;
+			}
 		}
+		return RESPParser::make_integer(count);
+	}
+
+	struct KeyReq {
+		std::string key;
+	};
+
+	std::unordered_map<size_t, std::vector<KeyReq>> shard_to_keys;
+	shard_to_keys.reserve(args.size() - 1);
+
+	for (size_t i = 1; i < args.size(); ++i) {
+		std::string key = args[i].toString();
+		const size_t shard_id = Shard(key, ctx->GetShardCount());
+		shard_to_keys[shard_id].push_back(KeyReq{std::move(key)});
+	}
+
+	int count = 0;
+	for (auto& [shard_id, keys] : shard_to_keys) {
+		int shard_count = ctx->shard_set->Await(shard_id, [db_index = ctx->GetDBIndex(), keys = std::move(keys)]() mutable -> int {
+			EngineShard* shard = EngineShard::tlocal();
+			if (shard == nullptr) {
+				return 0;
+			}
+			auto& db = shard->GetDB();
+			db.Select(db_index);
+			int local_exists = 0;
+			for (const auto& k : keys) {
+				if (db.Exists(CompactObj::fromKey(k.key))) {
+					++local_exists;
+				}
+			}
+			return local_exists;
+		});
+		count += shard_count;
 	}
 
 	return RESPParser::make_integer(count);
@@ -115,7 +186,7 @@ std::string StringFamily::MSet(const std::vector<CompactObj>& args, CommandConte
 
 	size_t num_pairs = (args.size() - 1) / 2;
 
-	if (ctx->IsSingleShard()) {
+	if (ctx->IsSingleShard() || ctx->shard_set == nullptr) {
 		auto* db = ctx->GetDB();
 		for (size_t i = 1; i < args.size(); i += 2) {
 			db->Set(args[i], CompactObj(args[i + 1]));
@@ -123,19 +194,33 @@ std::string StringFamily::MSet(const std::vector<CompactObj>& args, CommandConte
 		return RESPParser::make_simple_string("OK");
 	}
 
-	std::unordered_map<size_t, std::vector<std::pair<CompactObj, CompactObj>>> shard_to_pairs;
+	struct KvPair {
+		std::string key;
+		std::string value;
+	};
+
+	std::unordered_map<size_t, std::vector<KvPair>> shard_to_pairs;
+	shard_to_pairs.reserve(num_pairs);
 
 	for (size_t i = 1; i < args.size(); i += 2) {
 		std::string key = args[i].toString();
-		size_t shard_id = Shard(key, ctx->GetShardCount());
-
-		shard_to_pairs[shard_id].emplace_back(args[i], args[i + 1]);
+		std::string value = args[i + 1].toString();
+		const size_t shard_id = Shard(key, ctx->GetShardCount());
+		shard_to_pairs[shard_id].push_back(KvPair{std::move(key), std::move(value)});
 	}
 
-	for (const auto& [shard_id, pairs] : shard_to_pairs) {
-		for (const auto& [key, value] : pairs) {
-			ctx->GetShardDB(shard_id)->Set(key, CompactObj(value));
-		}
+	for (auto& [shard_id, pairs] : shard_to_pairs) {
+		ctx->shard_set->Await(shard_id, [db_index = ctx->GetDBIndex(), pairs = std::move(pairs)]() mutable {
+			EngineShard* shard = EngineShard::tlocal();
+			if (shard == nullptr) {
+				return;
+			}
+			auto& db = shard->GetDB();
+			db.Select(db_index);
+			for (const auto& kv : pairs) {
+				db.Set(CompactObj::fromKey(kv.key), CompactObj::fromKey(kv.value));
+			}
+		});
 	}
 
 	return RESPParser::make_simple_string("OK");
@@ -148,7 +233,7 @@ std::string StringFamily::MGet(const std::vector<CompactObj>& args, CommandConte
 
 	size_t num_keys = args.size() - 1;
 
-	if (ctx->IsSingleShard()) {
+	if (ctx->IsSingleShard() || ctx->shard_set == nullptr) {
 		auto* db = ctx->GetDB();
 		std::string result = RESPParser::make_array(num_keys);
 		for (size_t i = 1; i < args.size(); ++i) {
@@ -162,25 +247,44 @@ std::string StringFamily::MGet(const std::vector<CompactObj>& args, CommandConte
 		return result;
 	}
 
-	std::unordered_map<size_t, std::vector<size_t>> shard_to_indices;
-	std::unordered_map<size_t, std::vector<CompactObj>> shard_to_keys;
+	struct KeyReq {
+		size_t index;
+		std::string key;
+	};
+
+	std::unordered_map<size_t, std::vector<KeyReq>> shard_to_reqs;
+	shard_to_reqs.reserve(num_keys);
 
 	for (size_t i = 1; i < args.size(); ++i) {
 		std::string key = args[i].toString();
-		size_t shard_id = Shard(key, ctx->GetShardCount());
-
-		shard_to_indices[shard_id].push_back(i - 1);
-		shard_to_keys[shard_id].push_back(args[i]);
+		const size_t shard_id = Shard(key, ctx->GetShardCount());
+		shard_to_reqs[shard_id].push_back(KeyReq{i - 1, std::move(key)});
 	}
 
 	std::vector<std::optional<std::string>> final_values(num_keys);
 
-	for (const auto& [shard_id, indices] : shard_to_indices) {
-		const auto& keys = shard_to_keys[shard_id];
+	for (auto& [shard_id, reqs] : shard_to_reqs) {
+		auto results = ctx->shard_set->Await(
+		    shard_id,
+		    [db_index = ctx->GetDBIndex(), reqs = std::move(reqs)]() mutable
+		        -> std::vector<std::pair<size_t, std::optional<std::string>>> {
+			    std::vector<std::pair<size_t, std::optional<std::string>>> out;
+			    out.reserve(reqs.size());
 
-		for (size_t i = 0; i < indices.size(); ++i) {
-			size_t original_index = indices[i];
-			final_values[original_index] = ctx->GetShardDB(shard_id)->Get(keys[i]);
+			    EngineShard* shard = EngineShard::tlocal();
+			    if (shard == nullptr) {
+				    return out;
+			    }
+			    auto& db = shard->GetDB();
+			    db.Select(db_index);
+			    for (const auto& req : reqs) {
+				    out.emplace_back(req.index, db.Get(CompactObj::fromKey(req.key)));
+			    }
+			    return out;
+		    });
+
+		for (auto& [idx, val] : results) {
+			final_values[idx] = std::move(val);
 		}
 	}
 
@@ -354,6 +458,28 @@ std::string StringFamily::Select(const std::vector<CompactObj>& args, CommandCon
 	}
 
 	size_t db_index = static_cast<size_t>(ParseInt(args[1].toString()));
+
+	// In sharded mode we keep database selection consistent across all shards
+	// (current implementation is global, not per-connection).
+	if (ctx->shard_set && !ctx->IsSingleShard()) {
+		for (size_t shard_id = 0; shard_id < ctx->shard_set->size(); ++shard_id) {
+			bool ok = ctx->shard_set->Await(shard_id, [db_index]() -> bool {
+				EngineShard* shard = EngineShard::tlocal();
+				if (shard == nullptr) {
+					return false;
+				}
+				auto& shard_db = shard->GetDB();
+				return shard_db.Select(db_index);
+			});
+
+			if (!ok) {
+				return RESPParser::make_error("DB index out of range");
+			}
+		}
+
+		return RESPParser::make_simple_string("OK");
+	}
+
 	if (!db->Select(db_index)) {
 		return RESPParser::make_error("DB index out of range");
 	}

@@ -21,12 +21,13 @@ void ListFamily::Register(CommandRegistry* registry) {
 }
 
 std::string ListFamily::LPush(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() < 2) {
+	// LPUSH key value [value ...]
+	if (args.size() < 3) {
 		return RESPParser::make_error("wrong number of arguments for LPUSH");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
@@ -42,7 +43,7 @@ std::string ListFamily::LPush(const std::vector<CompactObj>& args, CommandContex
 
 	auto list = list_obj->getObj<std::deque<CompactObj>>();
 
-	for (size_t i = 1; i < args.size(); i++) {
+	for (size_t i = 2; i < args.size(); i++) {
 		list->push_front(args[i]);
 	}
 
@@ -50,12 +51,13 @@ std::string ListFamily::LPush(const std::vector<CompactObj>& args, CommandContex
 }
 
 std::string ListFamily::RPush(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() < 2) {
+	// RPUSH key value [value ...]
+	if (args.size() < 3) {
 		return RESPParser::make_error("wrong number of arguments for RPUSH");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
@@ -71,7 +73,7 @@ std::string ListFamily::RPush(const std::vector<CompactObj>& args, CommandContex
 
 	auto list = list_obj->getObj<std::deque<CompactObj>>();
 
-	for (size_t i = 1; i < args.size(); i++) {
+	for (size_t i = 2; i < args.size(); i++) {
 		list->push_back(args[i]);
 	}
 
@@ -79,12 +81,13 @@ std::string ListFamily::RPush(const std::vector<CompactObj>& args, CommandContex
 }
 
 std::string ListFamily::LPop(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() < 1 || args.size() > 2) {
+	// LPOP key [count]
+	if (args.size() < 2 || args.size() > 3) {
 		return RESPParser::make_error("wrong number of arguments for LPOP");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
@@ -98,8 +101,8 @@ std::string ListFamily::LPop(const std::vector<CompactObj>& args, CommandContext
 	}
 
 	int64_t count = 1;
-	if (args.size() == 2) {
-		if (!ParseLongLong(args[1].toString(), &count) || count < 0) {
+	if (args.size() == 3) {
+		if (!ParseLongLong(args[2].toString(), &count) || count < 0) {
 			return RESPParser::make_error("count is not a valid positive integer");
 		}
 	}
@@ -127,12 +130,13 @@ std::string ListFamily::LPop(const std::vector<CompactObj>& args, CommandContext
 }
 
 std::string ListFamily::RPop(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() < 1 || args.size() > 2) {
+	// RPOP key [count]
+	if (args.size() < 2 || args.size() > 3) {
 		return RESPParser::make_error("wrong number of arguments for RPOP");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
@@ -146,8 +150,8 @@ std::string ListFamily::RPop(const std::vector<CompactObj>& args, CommandContext
 	}
 
 	int64_t count = 1;
-	if (args.size() == 2) {
-		if (!ParseLongLong(args[1].toString(), &count) || count < 0) {
+	if (args.size() == 3) {
+		if (!ParseLongLong(args[2].toString(), &count) || count < 0) {
 			return RESPParser::make_error("count is not a valid positive integer");
 		}
 	}
@@ -175,12 +179,13 @@ std::string ListFamily::RPop(const std::vector<CompactObj>& args, CommandContext
 }
 
 std::string ListFamily::LLen(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() != 1) {
+	// LLEN key
+	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for LLEN");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
@@ -192,12 +197,13 @@ std::string ListFamily::LLen(const std::vector<CompactObj>& args, CommandContext
 }
 
 std::string ListFamily::LIndex(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() != 2) {
+	// LINDEX key index
+	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for LINDEX");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
@@ -205,7 +211,7 @@ std::string ListFamily::LIndex(const std::vector<CompactObj>& args, CommandConte
 	}
 
 	int64_t index;
-	if (!ParseLongLong(args[1].toString(), &index)) {
+	if (!ParseLongLong(args[2].toString(), &index)) {
 		return RESPParser::make_error("value is not an integer or out of range");
 	}
 
@@ -223,12 +229,13 @@ std::string ListFamily::LIndex(const std::vector<CompactObj>& args, CommandConte
 }
 
 std::string ListFamily::LSet(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() != 3) {
+	// LSET key index value
+	if (args.size() != 4) {
 		return RESPParser::make_error("wrong number of arguments for LSET");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
@@ -236,7 +243,7 @@ std::string ListFamily::LSet(const std::vector<CompactObj>& args, CommandContext
 	}
 
 	int64_t index;
-	if (!ParseLongLong(args[1].toString(), &index)) {
+	if (!ParseLongLong(args[2].toString(), &index)) {
 		return RESPParser::make_error("value is not an integer or out of range");
 	}
 
@@ -250,17 +257,18 @@ std::string ListFamily::LSet(const std::vector<CompactObj>& args, CommandContext
 		return RESPParser::make_error("index out of range");
 	}
 
-	list->at(index) = args[2];
+	list->at(index) = args[3];
 	return RESPParser::make_simple_string("OK");
 }
 
 std::string ListFamily::LRange(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() != 3) {
+	// LRANGE key start stop
+	if (args.size() != 4) {
 		return RESPParser::make_error("wrong number of arguments for LRANGE");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
@@ -268,7 +276,7 @@ std::string ListFamily::LRange(const std::vector<CompactObj>& args, CommandConte
 	}
 
 	int64_t start, stop;
-	if (!ParseLongLong(args[1].toString(), &start) || !ParseLongLong(args[2].toString(), &stop)) {
+	if (!ParseLongLong(args[2].toString(), &start) || !ParseLongLong(args[3].toString(), &stop)) {
 		return RESPParser::make_error("value is not an integer or out of range");
 	}
 
@@ -310,12 +318,13 @@ std::string ListFamily::LRange(const std::vector<CompactObj>& args, CommandConte
 }
 
 std::string ListFamily::LTrim(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() != 3) {
+	// LTRIM key start stop
+	if (args.size() != 4) {
 		return RESPParser::make_error("wrong number of arguments for LTRIM");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
@@ -323,7 +332,7 @@ std::string ListFamily::LTrim(const std::vector<CompactObj>& args, CommandContex
 	}
 
 	int64_t start, stop;
-	if (!ParseLongLong(args[1].toString(), &start) || !ParseLongLong(args[2].toString(), &stop)) {
+	if (!ParseLongLong(args[2].toString(), &start) || !ParseLongLong(args[3].toString(), &stop)) {
 		return RESPParser::make_error("value is not an integer or out of range");
 	}
 
@@ -363,12 +372,13 @@ std::string ListFamily::LTrim(const std::vector<CompactObj>& args, CommandContex
 }
 
 std::string ListFamily::LRem(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() != 3) {
+	// LREM key count value
+	if (args.size() != 4) {
 		return RESPParser::make_error("wrong number of arguments for LREM");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
@@ -376,12 +386,12 @@ std::string ListFamily::LRem(const std::vector<CompactObj>& args, CommandContext
 	}
 
 	int64_t count;
-	if (!ParseLongLong(args[1].toString(), &count)) {
+	if (!ParseLongLong(args[2].toString(), &count)) {
 		return RESPParser::make_error("value is not an integer or out of range");
 	}
 
 	auto list = list_obj->getObj<std::deque<CompactObj>>();
-	std::string value = args[2].toString();
+	std::string value = args[3].toString();
 
 	int removed = 0;
 	if (count == 0) {
@@ -423,25 +433,26 @@ std::string ListFamily::LRem(const std::vector<CompactObj>& args, CommandContext
 }
 
 std::string ListFamily::LInsert(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() != 4) {
+	// LINSERT key BEFORE|AFTER pivot value
+	if (args.size() != 5) {
 		return RESPParser::make_error("wrong number of arguments for LINSERT");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
 		return RESPParser::make_integer(0);
 	}
 
-	std::string where = args[1].toString();
+	std::string where = args[2].toString();
 	if (where != "BEFORE" && where != "AFTER") {
 		return RESPParser::make_error("syntax error");
 	}
 
-	std::string pivot = args[2].toString();
-	std::string value = args[3].toString();
+	std::string pivot = args[3].toString();
+	std::string value = args[4].toString();
 
 	auto list = list_obj->getObj<std::deque<CompactObj>>();
 

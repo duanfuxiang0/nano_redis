@@ -17,6 +17,7 @@ TEST_F(HashFamilyTest, HSetAndGet) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("HSET"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("field1"),
 		CompactObj::fromKey("value1")
@@ -25,7 +26,7 @@ TEST_F(HashFamilyTest, HSetAndGet) {
 	std::string result = HashFamily::HSet(args, &ctx);
 	EXPECT_EQ(result, "+OK\r\n");
 
-	args = {CompactObj::fromKey("myhash"), CompactObj::fromKey("field1")};
+	args = {CompactObj::fromKey("HGET"), CompactObj::fromKey("myhash"), CompactObj::fromKey("field1")};
 	result = HashFamily::HGet(args, &ctx);
 	EXPECT_EQ(result, "$6\r\nvalue1\r\n");
 }
@@ -34,6 +35,7 @@ TEST_F(HashFamilyTest, HGetNonExistent) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("HGET"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("nonexistent")
 	};
@@ -46,6 +48,7 @@ TEST_F(HashFamilyTest, HMSetAndGet) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("HMSET"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("field1"),
 		CompactObj::fromKey("value1"),
@@ -57,6 +60,7 @@ TEST_F(HashFamilyTest, HMSetAndGet) {
 	EXPECT_EQ(result, "+OK\r\n");
 
 	args = {
+		CompactObj::fromKey("HMGET"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("field1"),
 		CompactObj::fromKey("field2")
@@ -69,6 +73,7 @@ TEST_F(HashFamilyTest, HDel) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("HSET"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("field1"),
 		CompactObj::fromKey("value1")
@@ -77,13 +82,14 @@ TEST_F(HashFamilyTest, HDel) {
 	HashFamily::HSet(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("HDEL"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("field1")
 	};
 	std::string result = HashFamily::HDel(args, &ctx);
 	EXPECT_EQ(result, ":1\r\n");
 
-	result = HashFamily::HGet(args, &ctx);
+	result = HashFamily::HGet({CompactObj::fromKey("HGET"), CompactObj::fromKey("myhash"), CompactObj::fromKey("field1")}, &ctx);
 	EXPECT_EQ(result, "$-1\r\n");
 }
 
@@ -91,6 +97,7 @@ TEST_F(HashFamilyTest, HExists) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("HSET"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("field1"),
 		CompactObj::fromKey("value1")
@@ -99,6 +106,7 @@ TEST_F(HashFamilyTest, HExists) {
 	HashFamily::HSet(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("HEXISTS"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("field1")
 	};
@@ -106,6 +114,7 @@ TEST_F(HashFamilyTest, HExists) {
 	EXPECT_EQ(result, ":1\r\n");
 
 	args = {
+		CompactObj::fromKey("HEXISTS"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("nonexistent")
 	};
@@ -117,6 +126,7 @@ TEST_F(HashFamilyTest, HLen) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("HSET"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("field1"),
 		CompactObj::fromKey("value1"),
@@ -126,7 +136,7 @@ TEST_F(HashFamilyTest, HLen) {
 
 	HashFamily::HSet(args, &ctx);
 
-	args = {CompactObj::fromKey("myhash")};
+	args = {CompactObj::fromKey("HLEN"), CompactObj::fromKey("myhash")};
 	std::string result = HashFamily::HLen(args, &ctx);
 	EXPECT_EQ(result, ":2\r\n");
 }
@@ -135,6 +145,7 @@ TEST_F(HashFamilyTest, HKeys) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("HSET"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("field1"),
 		CompactObj::fromKey("value1"),
@@ -144,7 +155,7 @@ TEST_F(HashFamilyTest, HKeys) {
 
 	HashFamily::HSet(args, &ctx);
 
-	args = {CompactObj::fromKey("myhash")};
+	args = {CompactObj::fromKey("HKEYS"), CompactObj::fromKey("myhash")};
 	std::string result = HashFamily::HKeys(args, &ctx);
 	EXPECT_TRUE(result.find("field1") != std::string::npos);
 	EXPECT_TRUE(result.find("field2") != std::string::npos);
@@ -154,6 +165,7 @@ TEST_F(HashFamilyTest, HVals) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("HSET"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("field1"),
 		CompactObj::fromKey("value1"),
@@ -163,7 +175,7 @@ TEST_F(HashFamilyTest, HVals) {
 
 	HashFamily::HSet(args, &ctx);
 
-	args = {CompactObj::fromKey("myhash")};
+	args = {CompactObj::fromKey("HVALS"), CompactObj::fromKey("myhash")};
 	std::string result = HashFamily::HVals(args, &ctx);
 	EXPECT_TRUE(result.find("value1") != std::string::npos);
 	EXPECT_TRUE(result.find("value2") != std::string::npos);
@@ -173,6 +185,7 @@ TEST_F(HashFamilyTest, HGetAll) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("HSET"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("field1"),
 		CompactObj::fromKey("value1"),
@@ -182,7 +195,7 @@ TEST_F(HashFamilyTest, HGetAll) {
 
 	HashFamily::HSet(args, &ctx);
 
-	args = {CompactObj::fromKey("myhash")};
+	args = {CompactObj::fromKey("HGETALL"), CompactObj::fromKey("myhash")};
 	std::string result = HashFamily::HGetAll(args, &ctx);
 	EXPECT_TRUE(result.find("field1") != std::string::npos);
 	EXPECT_TRUE(result.find("field2") != std::string::npos);
@@ -194,6 +207,7 @@ TEST_F(HashFamilyTest, HIncrBy) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("HSET"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("counter"),
 		CompactObj::fromKey("10")
@@ -202,6 +216,7 @@ TEST_F(HashFamilyTest, HIncrBy) {
 	HashFamily::HSet(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("HINCRBY"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("counter"),
 		CompactObj::fromKey("5")
@@ -210,6 +225,7 @@ TEST_F(HashFamilyTest, HIncrBy) {
 	EXPECT_EQ(result, "$2\r\n15\r\n");
 
 	args = {
+		CompactObj::fromKey("HGET"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("counter")
 	};
@@ -221,6 +237,7 @@ TEST_F(HashFamilyTest, HStrLen) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("HSET"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("field1"),
 		CompactObj::fromKey("value1")
@@ -229,6 +246,7 @@ TEST_F(HashFamilyTest, HStrLen) {
 	HashFamily::HSet(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("HSTRLEN"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("field1")
 	};
@@ -240,6 +258,7 @@ TEST_F(HashFamilyTest, HRandField) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("HSET"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("field1"),
 		CompactObj::fromKey("value1"),
@@ -249,7 +268,7 @@ TEST_F(HashFamilyTest, HRandField) {
 
 	HashFamily::HSet(args, &ctx);
 
-	args = {CompactObj::fromKey("myhash")};
+	args = {CompactObj::fromKey("HRANDFIELD"), CompactObj::fromKey("myhash")};
 	std::string result = HashFamily::HRandField(args, &ctx);
 	EXPECT_TRUE(result.find("field") != std::string::npos || result.find("value") != std::string::npos);
 }
@@ -258,6 +277,7 @@ TEST_F(HashFamilyTest, HScan) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("HSET"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("field1"),
 		CompactObj::fromKey("value1"),
@@ -268,6 +288,7 @@ TEST_F(HashFamilyTest, HScan) {
 	HashFamily::HSet(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("HSCAN"),
 		CompactObj::fromKey("myhash"),
 		CompactObj::fromKey("0")
 	};

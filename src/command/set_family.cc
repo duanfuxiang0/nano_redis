@@ -1,10 +1,33 @@
 #include "command/set_family.h"
 #include "core/command_context.h"
 #include "protocol/resp_parser.h"
+#include "server/sharding.h"
 #include <cstdlib>
 #include <sstream>
 #include <vector>
 #include <algorithm>
+
+namespace {
+bool AllKeysSameShard(const std::vector<CompactObj>& args, size_t first_key_index, CommandContext* ctx) {
+	if (ctx == nullptr) {
+		return true;
+	}
+	if (ctx->IsSingleShard() || ctx->shard_set == nullptr) {
+		return true;
+	}
+	if (args.size() <= first_key_index) {
+		return true;
+	}
+	const size_t shard0 = Shard(args[first_key_index].toString(), ctx->GetShardCount());
+	for (size_t i = first_key_index + 1; i < args.size(); ++i) {
+		const size_t shard_i = Shard(args[i].toString(), ctx->GetShardCount());
+		if (shard_i != shard0) {
+			return false;
+		}
+	}
+	return true;
+}
+}  // namespace
 
 void SetFamily::Register(CommandRegistry* registry) {
 	registry->register_command_with_context("SADD", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SAdd(args, ctx); });
@@ -23,12 +46,13 @@ void SetFamily::Register(CommandRegistry* registry) {
 }
 
 std::string SetFamily::SAdd(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() < 2) {
+	// SADD key member [member ...]
+	if (args.size() < 3) {
 		return RESPParser::make_error("wrong number of arguments for SADD");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -44,7 +68,7 @@ std::string SetFamily::SAdd(const std::vector<CompactObj>& args, CommandContext*
 
 	auto set = set_obj->getObj<SetType>();
 	int added = 0;
-	for (size_t i = 1; i < args.size(); i++) {
+	for (size_t i = 2; i < args.size(); i++) {
 		std::string member = args[i].toString();
 		if (set->insert(member).second) {
 			added++;
@@ -55,12 +79,13 @@ std::string SetFamily::SAdd(const std::vector<CompactObj>& args, CommandContext*
 }
 
 std::string SetFamily::SRem(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() < 2) {
+	// SREM key member [member ...]
+	if (args.size() < 3) {
 		return RESPParser::make_error("wrong number of arguments for SREM");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -69,7 +94,7 @@ std::string SetFamily::SRem(const std::vector<CompactObj>& args, CommandContext*
 
 	auto set = set_obj->getObj<SetType>();
 	int removed = 0;
-	for (size_t i = 1; i < args.size(); i++) {
+	for (size_t i = 2; i < args.size(); i++) {
 		std::string member = args[i].toString();
 		if (set->erase(member)) {
 			removed++;
@@ -84,12 +109,13 @@ std::string SetFamily::SRem(const std::vector<CompactObj>& args, CommandContext*
 }
 
 std::string SetFamily::SPop(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() < 1 || args.size() > 2) {
+	// SPOP key [count]
+	if (args.size() < 2 || args.size() > 3) {
 		return RESPParser::make_error("wrong number of arguments for SPOP");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -103,8 +129,8 @@ std::string SetFamily::SPop(const std::vector<CompactObj>& args, CommandContext*
 	}
 
 	int64_t count = 1;
-	if (args.size() == 2) {
-		if (!ParseLongLong(args[1].toString(), &count) || count < 0) {
+	if (args.size() == 3) {
+		if (!ParseLongLong(args[2].toString(), &count) || count < 0) {
 			return RESPParser::make_error("count is not a valid positive integer");
 		}
 	}
@@ -124,12 +150,13 @@ std::string SetFamily::SPop(const std::vector<CompactObj>& args, CommandContext*
 }
 
 std::string SetFamily::SMembers(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() != 1) {
+	// SMEMBERS key
+	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for SMEMBERS");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -147,12 +174,13 @@ std::string SetFamily::SMembers(const std::vector<CompactObj>& args, CommandCont
 }
 
 std::string SetFamily::SCard(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() != 1) {
+	// SCARD key
+	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for SCARD");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -164,12 +192,13 @@ std::string SetFamily::SCard(const std::vector<CompactObj>& args, CommandContext
 }
 
 std::string SetFamily::SIsMember(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() != 2) {
+	// SISMEMBER key member
+	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for SISMEMBER");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -177,31 +206,32 @@ std::string SetFamily::SIsMember(const std::vector<CompactObj>& args, CommandCon
 	}
 
 	auto set = set_obj->getObj<SetType>();
-	std::string member = args[1].toString();
+	std::string member = args[2].toString();
 
 	return RESPParser::make_integer(set->count(member) ? 1 : 0);
 }
 
 std::string SetFamily::SMIsMember(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() < 2) {
+	// SMISMEMBER key member [member ...]
+	if (args.size() < 3) {
 		return RESPParser::make_error("wrong number of arguments for SMISMEMBER");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
-	std::string result = RESPParser::make_array(args.size() - 1);
+	std::string result = RESPParser::make_array(args.size() - 2);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
-		for (size_t i = 1; i < args.size(); i++) {
+		for (size_t i = 2; i < args.size(); i++) {
 			result += RESPParser::make_integer(0);
 		}
 		return result;
 	}
 
 	auto set = set_obj->getObj<SetType>();
-	for (size_t i = 1; i < args.size(); i++) {
+	for (size_t i = 2; i < args.size(); i++) {
 		std::string member = args[i].toString();
 		result += RESPParser::make_integer(set->count(member) ? 1 : 0);
 	}
@@ -210,18 +240,19 @@ std::string SetFamily::SMIsMember(const std::vector<CompactObj>& args, CommandCo
 }
 
 std::string SetFamily::SInter(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() < 1) {
+	// SINTER key [key ...]
+	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for SINTER");
 	}
 
-	if (args.size() == 1) {
-		return RESPParser::make_array(0);
+	if (!AllKeysSameShard(args, 1, ctx)) {
+		return RESPParser::make_error("CROSSSLOT Keys in request don't hash to the same slot");
 	}
 
 	auto* db = ctx->GetDB();
 
 	std::vector<SetType*> sets;
-	for (size_t i = 0; i < args.size(); i++) {
+	for (size_t i = 1; i < args.size(); i++) {
 		const CompactObj& key = args[i];
 		auto* set_obj = db->Find(key);
 
@@ -253,14 +284,19 @@ std::string SetFamily::SInter(const std::vector<CompactObj>& args, CommandContex
 }
 
 std::string SetFamily::SUnion(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() < 1) {
+	// SUNION key [key ...]
+	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for SUNION");
+	}
+
+	if (!AllKeysSameShard(args, 1, ctx)) {
+		return RESPParser::make_error("CROSSSLOT Keys in request don't hash to the same slot");
 	}
 
 	auto* db = ctx->GetDB();
 
 	SetType union_set;
-	for (size_t i = 0; i < args.size(); i++) {
+	for (size_t i = 1; i < args.size(); i++) {
 		const CompactObj& key = args[i];
 		auto* set_obj = db->Find(key);
 
@@ -279,12 +315,13 @@ std::string SetFamily::SUnion(const std::vector<CompactObj>& args, CommandContex
 }
 
 std::string SetFamily::SDiff(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() < 1) {
+	// SDIFF key [key ...]
+	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for SDIFF");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -293,12 +330,16 @@ std::string SetFamily::SDiff(const std::vector<CompactObj>& args, CommandContext
 
 	auto diff_set = *set_obj->getObj<SetType>();
 
-	for (size_t i = 1; i < args.size(); i++) {
-		const CompactObj& key = args[i];
-		auto* set_obj = db->Find(key);
+	if (!AllKeysSameShard(args, 1, ctx)) {
+		return RESPParser::make_error("CROSSSLOT Keys in request don't hash to the same slot");
+	}
 
-		if (set_obj != nullptr && set_obj->isSet()) {
-			auto set = set_obj->getObj<SetType>();
+	for (size_t i = 2; i < args.size(); i++) {
+		const CompactObj& other_key = args[i];
+		auto* other_set_obj = db->Find(other_key);
+
+		if (other_set_obj != nullptr && other_set_obj->isSet()) {
+			auto set = other_set_obj->getObj<SetType>();
 			for (const auto& elem : *set) {
 				diff_set.erase(elem);
 			}
@@ -314,12 +355,13 @@ std::string SetFamily::SDiff(const std::vector<CompactObj>& args, CommandContext
 }
 
 std::string SetFamily::SScan(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() < 2) {
+	// SSCAN key cursor (simplified)
+	if (args.size() < 3) {
 		return RESPParser::make_error("wrong number of arguments for SSCAN");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -355,12 +397,13 @@ std::string SetFamily::SScan(const std::vector<CompactObj>& args, CommandContext
 }
 
 std::string SetFamily::SRandMember(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() < 1 || args.size() > 2) {
+	// SRANDMEMBER key [count]
+	if (args.size() < 2 || args.size() > 3) {
 		return RESPParser::make_error("wrong number of arguments for SRANDMEMBER");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[0];
+	const CompactObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -373,7 +416,7 @@ std::string SetFamily::SRandMember(const std::vector<CompactObj>& args, CommandC
 		return RESPParser::make_null_bulk_string();
 	}
 
-	if (args.size() == 1) {
+	if (args.size() == 2) {
 		auto it = set->begin();
 		size_t offset = std::rand() % set->size();
 		std::advance(it, offset);
@@ -381,7 +424,7 @@ std::string SetFamily::SRandMember(const std::vector<CompactObj>& args, CommandC
 	}
 
 	int64_t count = 1;
-	if (!ParseLongLong(args[1].toString(), &count)) {
+	if (!ParseLongLong(args[2].toString(), &count)) {
 		return RESPParser::make_error("count is not a valid integer");
 	}
 
@@ -401,14 +444,19 @@ std::string SetFamily::SRandMember(const std::vector<CompactObj>& args, CommandC
 }
 
 std::string SetFamily::SMove(const std::vector<CompactObj>& args, CommandContext* ctx) {
-	if (args.size() != 3) {
+	// SMOVE source destination member
+	if (args.size() != 4) {
 		return RESPParser::make_error("wrong number of arguments for SMOVE");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& src_key = args[0];
-	const CompactObj& dest_key = args[1];
-	const std::string member = args[2].toString();
+	const CompactObj& src_key = args[1];
+	const CompactObj& dest_key = args[2];
+	const std::string member = args[3].toString();
+
+	if (!AllKeysSameShard(args, 1, ctx)) {
+		return RESPParser::make_error("CROSSSLOT Keys in request don't hash to the same slot");
+	}
 
 	auto* src_obj = db->Find(src_key);
 

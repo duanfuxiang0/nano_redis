@@ -28,5 +28,9 @@ struct CommandContext {
 
 	bool IsSingleShard() const { return shard_count <= 1; }
 
+	// WARNING:
+	// Returning a raw Database* for a remote shard violates shared-nothing and can
+	// introduce data races. Use shard_set->Await/Add to execute work on the owning
+	// shard thread instead.
 	Database* GetShardDB(size_t shard_id) const;
 };

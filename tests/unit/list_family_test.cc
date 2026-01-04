@@ -17,6 +17,7 @@ TEST_F(ListFamilyTest, LPushAndRPop) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("LPUSH"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("value1"),
 		CompactObj::fromKey("value2")
@@ -25,7 +26,7 @@ TEST_F(ListFamilyTest, LPushAndRPop) {
 	std::string result = ListFamily::LPush(args, &ctx);
 	EXPECT_EQ(result, ":2\r\n");
 
-	args = {CompactObj::fromKey("mylist")};
+	args = {CompactObj::fromKey("RPOP"), CompactObj::fromKey("mylist")};
 	result = ListFamily::RPop(args, &ctx);
 	EXPECT_EQ(result, "$6\r\nvalue1\r\n");
 
@@ -37,6 +38,7 @@ TEST_F(ListFamilyTest, RPushAndLPop) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("RPUSH"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("value1"),
 		CompactObj::fromKey("value2")
@@ -45,7 +47,7 @@ TEST_F(ListFamilyTest, RPushAndLPop) {
 	std::string result = ListFamily::RPush(args, &ctx);
 	EXPECT_EQ(result, ":2\r\n");
 
-	args = {CompactObj::fromKey("mylist")};
+	args = {CompactObj::fromKey("LPOP"), CompactObj::fromKey("mylist")};
 	result = ListFamily::LPop(args, &ctx);
 	EXPECT_EQ(result, "$6\r\nvalue1\r\n");
 
@@ -57,6 +59,7 @@ TEST_F(ListFamilyTest, LLen) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("LPUSH"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("value1"),
 		CompactObj::fromKey("value2"),
@@ -65,7 +68,7 @@ TEST_F(ListFamilyTest, LLen) {
 
 	ListFamily::LPush(args, &ctx);
 
-	args = {CompactObj::fromKey("mylist")};
+	args = {CompactObj::fromKey("LLEN"), CompactObj::fromKey("mylist")};
 	std::string result = ListFamily::LLen(args, &ctx);
 	EXPECT_EQ(result, ":3\r\n");
 }
@@ -74,6 +77,7 @@ TEST_F(ListFamilyTest, LIndex) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("RPUSH"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("value1"),
 		CompactObj::fromKey("value2"),
@@ -83,6 +87,7 @@ TEST_F(ListFamilyTest, LIndex) {
 	ListFamily::RPush(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("LINDEX"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("0")
 	};
@@ -90,6 +95,7 @@ TEST_F(ListFamilyTest, LIndex) {
 	EXPECT_EQ(result, "$6\r\nvalue1\r\n");
 
 	args = {
+		CompactObj::fromKey("LINDEX"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("-1")
 	};
@@ -101,6 +107,7 @@ TEST_F(ListFamilyTest, LSet) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("RPUSH"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("value1"),
 		CompactObj::fromKey("value2")
@@ -109,6 +116,7 @@ TEST_F(ListFamilyTest, LSet) {
 	ListFamily::RPush(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("LSET"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("0"),
 		CompactObj::fromKey("newvalue1")
@@ -117,6 +125,7 @@ TEST_F(ListFamilyTest, LSet) {
 	EXPECT_EQ(result, "+OK\r\n");
 
 	args = {
+		CompactObj::fromKey("LINDEX"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("0")
 	};
@@ -128,6 +137,7 @@ TEST_F(ListFamilyTest, LRange) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("RPUSH"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("value1"),
 		CompactObj::fromKey("value2"),
@@ -137,6 +147,7 @@ TEST_F(ListFamilyTest, LRange) {
 	ListFamily::RPush(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("LRANGE"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("0"),
 		CompactObj::fromKey("1")
@@ -145,6 +156,7 @@ TEST_F(ListFamilyTest, LRange) {
 	EXPECT_EQ(result, "*2\r\n$6\r\nvalue1\r\n$6\r\nvalue2\r\n");
 
 	args = {
+		CompactObj::fromKey("LRANGE"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("0"),
 		CompactObj::fromKey("-1")
@@ -157,6 +169,7 @@ TEST_F(ListFamilyTest, LTrim) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("RPUSH"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("value1"),
 		CompactObj::fromKey("value2"),
@@ -166,6 +179,7 @@ TEST_F(ListFamilyTest, LTrim) {
 	ListFamily::RPush(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("LTRIM"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("1"),
 		CompactObj::fromKey("1")
@@ -174,6 +188,7 @@ TEST_F(ListFamilyTest, LTrim) {
 	EXPECT_EQ(result, "+OK\r\n");
 
 	args = {
+		CompactObj::fromKey("LRANGE"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("0"),
 		CompactObj::fromKey("-1")
@@ -186,6 +201,7 @@ TEST_F(ListFamilyTest, LRem) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("RPUSH"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("value1"),
 		CompactObj::fromKey("value2"),
@@ -195,6 +211,7 @@ TEST_F(ListFamilyTest, LRem) {
 	ListFamily::RPush(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("LREM"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("0"),
 		CompactObj::fromKey("value1")
@@ -202,7 +219,7 @@ TEST_F(ListFamilyTest, LRem) {
 	std::string result = ListFamily::LRem(args, &ctx);
 	EXPECT_EQ(result, ":2\r\n");
 
-	args = {CompactObj::fromKey("mylist")};
+	args = {CompactObj::fromKey("LLEN"), CompactObj::fromKey("mylist")};
 	result = ListFamily::LLen(args, &ctx);
 	EXPECT_EQ(result, ":1\r\n");
 }
@@ -211,6 +228,7 @@ TEST_F(ListFamilyTest, LInsert) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("RPUSH"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("value1"),
 		CompactObj::fromKey("value3")
@@ -219,6 +237,7 @@ TEST_F(ListFamilyTest, LInsert) {
 	ListFamily::RPush(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("LINSERT"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("BEFORE"),
 		CompactObj::fromKey("value3"),
@@ -228,6 +247,7 @@ TEST_F(ListFamilyTest, LInsert) {
 	EXPECT_EQ(result, ":3\r\n");
 
 	args = {
+		CompactObj::fromKey("LRANGE"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("0"),
 		CompactObj::fromKey("-1")
@@ -240,13 +260,14 @@ TEST_F(ListFamilyTest, LPopEmpty) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("RPUSH"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("value1")
 	};
 
 	ListFamily::RPush(args, &ctx);
 
-	args = {CompactObj::fromKey("mylist")};
+	args = {CompactObj::fromKey("LPOP"), CompactObj::fromKey("mylist")};
 	std::string result = ListFamily::LPop(args, &ctx);
 	EXPECT_EQ(result, "$6\r\nvalue1\r\n");
 
@@ -258,6 +279,7 @@ TEST_F(ListFamilyTest, LIndexOutOfRange) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("RPUSH"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("value1")
 	};
@@ -265,6 +287,7 @@ TEST_F(ListFamilyTest, LIndexOutOfRange) {
 	ListFamily::RPush(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("LINDEX"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("10")
 	};
@@ -276,6 +299,7 @@ TEST_F(ListFamilyTest, LIndexNegative) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("RPUSH"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("value1"),
 		CompactObj::fromKey("value2"),
@@ -285,6 +309,7 @@ TEST_F(ListFamilyTest, LIndexNegative) {
 	ListFamily::RPush(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("LINDEX"),
 		CompactObj::fromKey("mylist"),
 		CompactObj::fromKey("-2")
 	};

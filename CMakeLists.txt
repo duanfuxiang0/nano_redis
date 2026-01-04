@@ -41,6 +41,7 @@ set(REDIS_HEADERS
   include/protocol/resp_parser.h
   include/server/server.h
   include/server/sharded_server.h
+  include/server/proactor_pool.h
   include/server/engine_shard.h
   include/server/engine_shard_set.h
   include/server/sharding.h
@@ -62,6 +63,7 @@ set(REDIS_HEADERS
 set(REDIS_SOURCES
   src/server/server.cc
   src/server/sharded_server.cc
+  src/server/proactor_pool.cc
   src/server/engine_shard.cc
   src/server/engine_shard_set.cc
   src/server/connection.cc

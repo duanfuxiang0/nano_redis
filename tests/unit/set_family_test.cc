@@ -17,6 +17,7 @@ TEST_F(SetFamilyTest, SAddAndSMembers) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("SADD"),
 		CompactObj::fromKey("myset"),
 		CompactObj::fromKey("member1"),
 		CompactObj::fromKey("member2")
@@ -25,7 +26,7 @@ TEST_F(SetFamilyTest, SAddAndSMembers) {
 	std::string result = SetFamily::SAdd(args, &ctx);
 	EXPECT_EQ(result, ":2\r\n");
 
-	args = {CompactObj::fromKey("myset")};
+	args = {CompactObj::fromKey("SMEMBERS"), CompactObj::fromKey("myset")};
 	result = SetFamily::SMembers(args, &ctx);
 	EXPECT_EQ(result, "*2\r\n$7\r\nmember1\r\n$7\r\nmember2\r\n");
 }
@@ -34,6 +35,7 @@ TEST_F(SetFamilyTest, SAddDuplicate) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("SADD"),
 		CompactObj::fromKey("myset"),
 		CompactObj::fromKey("member1"),
 		CompactObj::fromKey("member1")
@@ -42,7 +44,7 @@ TEST_F(SetFamilyTest, SAddDuplicate) {
 	std::string result = SetFamily::SAdd(args, &ctx);
 	EXPECT_EQ(result, ":1\r\n");
 
-	args = {CompactObj::fromKey("myset")};
+	args = {CompactObj::fromKey("SMEMBERS"), CompactObj::fromKey("myset")};
 	result = SetFamily::SMembers(args, &ctx);
 	EXPECT_EQ(result, "*1\r\n$7\r\nmember1\r\n");
 }
@@ -51,6 +53,7 @@ TEST_F(SetFamilyTest, SRem) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("SADD"),
 		CompactObj::fromKey("myset"),
 		CompactObj::fromKey("member1"),
 		CompactObj::fromKey("member2")
@@ -59,13 +62,14 @@ TEST_F(SetFamilyTest, SRem) {
 	SetFamily::SAdd(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("SREM"),
 		CompactObj::fromKey("myset"),
 		CompactObj::fromKey("member1")
 	};
 	std::string result = SetFamily::SRem(args, &ctx);
 	EXPECT_EQ(result, ":1\r\n");
 
-	args = {CompactObj::fromKey("myset")};
+	args = {CompactObj::fromKey("SMEMBERS"), CompactObj::fromKey("myset")};
 	result = SetFamily::SMembers(args, &ctx);
 	EXPECT_EQ(result, "*1\r\n$7\r\nmember2\r\n");
 }
@@ -74,6 +78,7 @@ TEST_F(SetFamilyTest, SPop) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("SADD"),
 		CompactObj::fromKey("myset"),
 		CompactObj::fromKey("member1"),
 		CompactObj::fromKey("member2")
@@ -81,11 +86,11 @@ TEST_F(SetFamilyTest, SPop) {
 
 	SetFamily::SAdd(args, &ctx);
 
-	args = {CompactObj::fromKey("myset")};
+	args = {CompactObj::fromKey("SPOP"), CompactObj::fromKey("myset")};
 	std::string result = SetFamily::SPop(args, &ctx);
 	EXPECT_TRUE(result.find("member") != std::string::npos);
 
-	args = {CompactObj::fromKey("myset")};
+	args = {CompactObj::fromKey("SCARD"), CompactObj::fromKey("myset")};
 	result = SetFamily::SCard(args, &ctx);
 	EXPECT_EQ(result, ":1\r\n");
 }
@@ -94,6 +99,7 @@ TEST_F(SetFamilyTest, SCard) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("SADD"),
 		CompactObj::fromKey("myset"),
 		CompactObj::fromKey("member1"),
 		CompactObj::fromKey("member2"),
@@ -102,7 +108,7 @@ TEST_F(SetFamilyTest, SCard) {
 
 	SetFamily::SAdd(args, &ctx);
 
-	args = {CompactObj::fromKey("myset")};
+	args = {CompactObj::fromKey("SCARD"), CompactObj::fromKey("myset")};
 	std::string result = SetFamily::SCard(args, &ctx);
 	EXPECT_EQ(result, ":3\r\n");
 }
@@ -111,6 +117,7 @@ TEST_F(SetFamilyTest, SIsMember) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("SADD"),
 		CompactObj::fromKey("myset"),
 		CompactObj::fromKey("member1"),
 		CompactObj::fromKey("member2")
@@ -119,6 +126,7 @@ TEST_F(SetFamilyTest, SIsMember) {
 	SetFamily::SAdd(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("SISMEMBER"),
 		CompactObj::fromKey("myset"),
 		CompactObj::fromKey("member1")
 	};
@@ -126,6 +134,7 @@ TEST_F(SetFamilyTest, SIsMember) {
 	EXPECT_EQ(result, ":1\r\n");
 
 	args = {
+		CompactObj::fromKey("SISMEMBER"),
 		CompactObj::fromKey("myset"),
 		CompactObj::fromKey("nonexistent")
 	};
@@ -137,6 +146,7 @@ TEST_F(SetFamilyTest, SMIsMember) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("SADD"),
 		CompactObj::fromKey("myset"),
 		CompactObj::fromKey("member1"),
 		CompactObj::fromKey("member2"),
@@ -146,6 +156,7 @@ TEST_F(SetFamilyTest, SMIsMember) {
 	SetFamily::SAdd(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("SMISMEMBER"),
 		CompactObj::fromKey("myset"),
 		CompactObj::fromKey("member1"),
 		CompactObj::fromKey("member2"),
@@ -159,6 +170,7 @@ TEST_F(SetFamilyTest, SInter) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("SADD"),
 		CompactObj::fromKey("set1"),
 		CompactObj::fromKey("member1"),
 		CompactObj::fromKey("member2"),
@@ -168,6 +180,7 @@ TEST_F(SetFamilyTest, SInter) {
 	SetFamily::SAdd(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("SADD"),
 		CompactObj::fromKey("set2"),
 		CompactObj::fromKey("member2"),
 		CompactObj::fromKey("member3"),
@@ -177,6 +190,7 @@ TEST_F(SetFamilyTest, SInter) {
 	SetFamily::SAdd(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("SINTER"),
 		CompactObj::fromKey("set1"),
 		CompactObj::fromKey("set2")
 	};
@@ -189,6 +203,7 @@ TEST_F(SetFamilyTest, SUnion) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("SADD"),
 		CompactObj::fromKey("set1"),
 		CompactObj::fromKey("member1"),
 		CompactObj::fromKey("member2")
@@ -197,6 +212,7 @@ TEST_F(SetFamilyTest, SUnion) {
 	SetFamily::SAdd(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("SADD"),
 		CompactObj::fromKey("set2"),
 		CompactObj::fromKey("member2"),
 		CompactObj::fromKey("member3")
@@ -205,6 +221,7 @@ TEST_F(SetFamilyTest, SUnion) {
 	SetFamily::SAdd(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("SUNION"),
 		CompactObj::fromKey("set1"),
 		CompactObj::fromKey("set2")
 	};
@@ -218,6 +235,7 @@ TEST_F(SetFamilyTest, SDiff) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("SADD"),
 		CompactObj::fromKey("set1"),
 		CompactObj::fromKey("member1"),
 		CompactObj::fromKey("member2"),
@@ -227,6 +245,7 @@ TEST_F(SetFamilyTest, SDiff) {
 	SetFamily::SAdd(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("SADD"),
 		CompactObj::fromKey("set2"),
 		CompactObj::fromKey("member2"),
 		CompactObj::fromKey("member4")
@@ -235,6 +254,7 @@ TEST_F(SetFamilyTest, SDiff) {
 	SetFamily::SAdd(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("SDIFF"),
 		CompactObj::fromKey("set1"),
 		CompactObj::fromKey("set2")
 	};
@@ -248,6 +268,7 @@ TEST_F(SetFamilyTest, SRandMember) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("SADD"),
 		CompactObj::fromKey("myset"),
 		CompactObj::fromKey("member1"),
 		CompactObj::fromKey("member2"),
@@ -256,7 +277,7 @@ TEST_F(SetFamilyTest, SRandMember) {
 
 	SetFamily::SAdd(args, &ctx);
 
-	args = {CompactObj::fromKey("myset")};
+	args = {CompactObj::fromKey("SRANDMEMBER"), CompactObj::fromKey("myset")};
 	std::string result = SetFamily::SRandMember(args, &ctx);
 	EXPECT_TRUE(result.find("member") != std::string::npos);
 }
@@ -265,6 +286,7 @@ TEST_F(SetFamilyTest, SMove) {
 	CommandContext ctx(db_.get(), 0);
 
 	std::vector<CompactObj> args = {
+		CompactObj::fromKey("SADD"),
 		CompactObj::fromKey("set1"),
 		CompactObj::fromKey("member1"),
 		CompactObj::fromKey("member2")
@@ -273,6 +295,7 @@ TEST_F(SetFamilyTest, SMove) {
 	SetFamily::SAdd(args, &ctx);
 
 	args = {
+		CompactObj::fromKey("SMOVE"),
 		CompactObj::fromKey("set1"),
 		CompactObj::fromKey("set2"),
 		CompactObj::fromKey("member1")
@@ -280,11 +303,11 @@ TEST_F(SetFamilyTest, SMove) {
 	std::string result = SetFamily::SMove(args, &ctx);
 	EXPECT_EQ(result, ":1\r\n");
 
-	args = {CompactObj::fromKey("set1")};
+	args = {CompactObj::fromKey("SMEMBERS"), CompactObj::fromKey("set1")};
 	result = SetFamily::SMembers(args, &ctx);
 	EXPECT_TRUE(result.find("member1") == std::string::npos);
 
-	args = {CompactObj::fromKey("set2")};
+	args = {CompactObj::fromKey("SMEMBERS"), CompactObj::fromKey("set2")};
 	result = SetFamily::SMembers(args, &ctx);
 	EXPECT_TRUE(result.find("member1") != std::string::npos);
 }

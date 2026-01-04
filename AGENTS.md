@@ -94,4 +94,17 @@ clang-format -i --style=file <file>
 
 ## Shared-Nothing Architecture
 
-This project uses a shared-nothing, thread-per-core architecture. **See `doc/shard_concurrency_plan.md` for full details.**
+This project uses a shared-nothing, thread-per-core architecture inspired by Dragonfly.
+
+**See `doc/shared_nothing_architecture.md` for full details.**
+
+Key concepts:
+- N vCPUs (threads), each owning exactly one shard
+- Connection Fibers act as coordinators
+- Cross-shard requests via TaskQueue message passing (no shared mutable state)
+- I/O distributed via SO_REUSEPORT
+
+Key components:
+- `ProactorPool`: Manages all vCPUs and connection handling
+- `EngineShard`: Pure data container (Database + TaskQueue)
+- `EngineShardSet`: Cross-shard communication (Await/Add)

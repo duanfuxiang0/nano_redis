@@ -8,8 +8,11 @@ Database* CommandContext::GetDB() const {
 }
 
 Database* CommandContext::GetShardDB(size_t shard_id) const {
-	if (!shard_set) return nullptr;
-	auto* shard = shard_set->GetShard(shard_id);
-	if (!shard) return nullptr;
-	return &shard->GetDB();
+	// Unsafe in multi-shard mode. Keep it only for legacy/unit-test code paths.
+	if (!shard_set || shard_count <= 1) {
+		return GetDB();
+	}
+
+	(void)shard_id;
+	return nullptr;
 }
