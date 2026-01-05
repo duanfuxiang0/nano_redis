@@ -15,18 +15,38 @@ std::unique_ptr<ShardedServer> sharded_server;
 
 void handle_null(int) {
 }
-void handle_term(int) {
-	redisserver.reset();
-	sharded_server.reset();
+void handle_term(int signum) {
+	LOG_INFO("Received signal `, initiating shutdown...", signum);
+	if (redisserver) {
+		redisserver->term();
+	}
+	if (sharded_server) {
+		sharded_server->Stop();
+	}
 }
 
 int main(int argc, char** argv) {
 	gflags::ParseCommandLineFlags(&argc, &argv, true);
 	set_log_output_level(ALOG_INFO);
 
-	int ret = photon::init();
+	// Try to initialize photon with io_uring first (best performance)
+	int ret = photon::init(
+		photon::INIT_EVENT_IOURING | photon::INIT_EVENT_SIGNAL,
+		photon::INIT_IO_NONE
+	);
 	if (ret < 0) {
-		LOG_ERROR_RETURN(0, -1, "Failed to initialize photon with io_uring");
+		LOG_WARN("Failed to initialize photon with io_uring, falling back to epoll");
+		// Fallback to epoll if io_uring is not available
+		ret = photon::init(
+			photon::INIT_EVENT_EPOLL | photon::INIT_EVENT_SIGNAL,
+			photon::INIT_IO_NONE
+		);
+		if (ret < 0) {
+			LOG_ERROR_RETURN(0, -1, "Failed to initialize photon with epoll");
+		}
+		LOG_INFO("Main thread initialized with epoll");
+	} else {
+		LOG_INFO("Main thread initialized with io_uring");
 	}
 	DEFER(photon::fini());
 

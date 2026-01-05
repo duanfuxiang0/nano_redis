@@ -95,7 +95,25 @@ photon::vcpu_base* ProactorPool::GetVcpu(size_t index) {
 
 void ProactorPool::VcpuMain(size_t vcpu_index) {
 	// Initialize Photon environment for this vCPU
-	photon::init(photon::INIT_EVENT_DEFAULT, photon::INIT_IO_NONE);
+	// Try io_uring first for best performance, fallback to epoll
+	int ret = photon::init(
+		photon::INIT_EVENT_IOURING | photon::INIT_EVENT_SIGNAL,
+		photon::INIT_IO_NONE
+	);
+	if (ret < 0) {
+		LOG_WARN("vCPU `: Failed to initialize io_uring, falling back to epoll", vcpu_index);
+		ret = photon::init(
+			photon::INIT_EVENT_EPOLL | photon::INIT_EVENT_SIGNAL,
+			photon::INIT_IO_NONE
+		);
+		if (ret < 0) {
+			LOG_ERROR("vCPU `: Failed to initialize photon", vcpu_index);
+			return;
+		}
+		LOG_INFO("vCPU ` initialized with epoll", vcpu_index);
+	} else {
+		LOG_INFO("vCPU ` initialized with io_uring", vcpu_index);
+	}
 	DEFER(photon::fini());
 
 	// Store this vCPU handle
@@ -115,7 +133,7 @@ void ProactorPool::VcpuMain(size_t vcpu_index) {
 	servers_[vcpu_index] = server;
 	DEFER(servers_[vcpu_index] = nullptr);
 
-	int ret = server->setsockopt<int>(SOL_SOCKET, SO_REUSEPORT, 1);
+	ret = server->setsockopt<int>(SOL_SOCKET, SO_REUSEPORT, 1);
 	if (ret < 0) {
 		LOG_ERROR("vCPU `: Failed to set SO_REUSEPORT", vcpu_index);
 		return;

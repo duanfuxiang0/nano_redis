@@ -9,20 +9,8 @@
 #include <photon/common/alog.h>
 #include <photon/thread/thread.h>
 
-#include <csignal>
-#include <atomic>
-
-namespace {
-std::atomic<bool> g_running{true};
-
-void SignalHandler(int signum) {
-	LOG_INFO("Received signal `, shutting down...", signum);
-	g_running = false;
-}
-}  // namespace
-
 ShardedServer::ShardedServer(size_t num_shards, uint16_t port)
-	: num_shards_(num_shards), port_(port) {
+	: num_shards_(num_shards), port_(port), running_(false) {
 	// Register all command families
 	StringFamily::Register(&CommandRegistry::instance());
 	HashFamily::Register(&CommandRegistry::instance());
@@ -41,18 +29,15 @@ int ShardedServer::Run() {
 	LOG_INFO("  - I/O distributed via SO_REUSEPORT");
 	LOG_INFO("  - Cross-shard requests via TaskQueue message passing");
 
-	// Set up signal handlers
-	std::signal(SIGINT, SignalHandler);
-	std::signal(SIGTERM, SignalHandler);
-
 	// Create and start the proactor pool
 	proactor_pool_ = std::make_unique<ProactorPool>(num_shards_, port_);
 	proactor_pool_->Start();
 
+	running_ = true;
 	LOG_INFO("ShardedServer running. Press Ctrl+C to stop.");
 
-	// Wait for shutdown signal
-	while (g_running) {
+	// Wait for shutdown signal (Stop() will set running_ to false)
+	while (running_) {
 		photon::thread_usleep(100000);  // 100ms
 	}
 
@@ -60,8 +45,12 @@ int ShardedServer::Run() {
 	return 0;
 }
 
+void ShardedServer::Stop() {
+	running_ = false;
+}
+
 void ShardedServer::Term() {
-	g_running = false;
+	running_ = false;
 	if (proactor_pool_) {
 		proactor_pool_->Stop();
 		proactor_pool_->Join();

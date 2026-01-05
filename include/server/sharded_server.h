@@ -37,7 +37,12 @@ public:
 	int Run();
 
 	/**
-	 * @brief Stop the server gracefully
+	 * @brief Request the server to stop (can be called from signal handler)
+	 */
+	void Stop();
+
+	/**
+	 * @brief Stop the server gracefully and cleanup
 	 */
 	void Term();
 
@@ -45,4 +50,5 @@ private:
 	std::unique_ptr<ProactorPool> proactor_pool_;
 	size_t num_shards_;
 	uint16_t port_;
+	volatile bool running_ = false;
 };
