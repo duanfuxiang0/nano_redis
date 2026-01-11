@@ -48,7 +48,8 @@ private:
 
 private:
 	photon::net::ISocketStream* stream_;
-	char buffer_[1024];
+	// OPTIMIZED: Larger buffer reduces syscall overhead, especially for pipelined requests
+	char buffer_[8192];
 	size_t buffer_pos_ = 0;
 	size_t buffer_size_ = 0;
 };

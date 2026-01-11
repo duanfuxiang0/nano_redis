@@ -3,7 +3,7 @@
 #include <photon/common/alog.h>
 #include <photon/net/socket.h>
 #include <cctype>
-#include <sstream>
+#include <cstdio>
 
 // Pre-computed static responses for hot paths
 namespace {
@@ -50,25 +50,36 @@ char RESPParser::read_char() {
 
 std::string RESPParser::read_line() {
     std::string line;
+    // OPTIMIZED: Scan for \r\n or \n in buffer, append chunks instead of char-by-char
     while (true) {
         if (fill_buffer() < 0) {
             break;
         }
-        while (buffer_pos_ < buffer_size_) {
-            char c = buffer_[buffer_pos_++];
-            if (c == '\r') {
+        // Search for line terminator in remaining buffer
+        const char* start = buffer_ + buffer_pos_;
+        const char* end = buffer_ + buffer_size_;
+        const char* p = start;
+        while (p < end) {
+            if (*p == '\r') {
+                // Append everything before \r
+                line.append(start, p - start);
+                buffer_pos_ = (p - buffer_) + 1;
+                // Check for \n
                 if (buffer_pos_ < buffer_size_ && buffer_[buffer_pos_] == '\n') {
                     buffer_pos_++;
-                    return line;
-                } else {
-                    line += c;
                 }
-            } else if (c == '\n') {
                 return line;
-            } else {
-                line += c;
+            } else if (*p == '\n') {
+                // Append everything before \n
+                line.append(start, p - start);
+                buffer_pos_ = (p - buffer_) + 1;
+                return line;
             }
+            ++p;
         }
+        // No terminator found - append entire remaining buffer and refill
+        line.append(start, end - start);
+        buffer_pos_ = buffer_size_;
     }
     return line;
 }
@@ -99,11 +110,26 @@ std::string RESPParser::read_bulk_string(int64_t len) {
 }
 
 int RESPParser::parse_inline_command(const std::string& line, std::vector<CompactObj>& args) {
-    std::istringstream iss(line);
-    std::string arg;
-
-    while (iss >> arg) {
-        args.push_back(CompactObj::fromKey(arg));
+    // OPTIMIZED: Manual tokenizer instead of istringstream (avoids allocations)
+    const char* p = line.data();
+    const char* end = p + line.size();
+    
+    while (p < end) {
+        // Skip whitespace
+        while (p < end && (*p == ' ' || *p == '\t')) {
+            ++p;
+        }
+        if (p >= end) {
+            break;
+        }
+        // Find end of token
+        const char* token_start = p;
+        while (p < end && *p != ' ' && *p != '\t') {
+            ++p;
+        }
+        if (p > token_start) {
+            args.push_back(CompactObj::fromKey(std::string_view(token_start, p - token_start)));
+        }
     }
 
     return args.size() > 0 ? 0 : -1;
@@ -213,25 +239,64 @@ int RESPParser::parse_command(std::vector<CompactObj>& args) {
 }
 
 std::string RESPParser::make_simple_string(const std::string& s) {
-    return "+" + s + "\r\n";
+    // OPTIMIZED: Single allocation with reserve
+    std::string result;
+    result.reserve(1 + s.size() + 2);
+    result.push_back('+');
+    result.append(s);
+    result.append("\r\n", 2);
+    return result;
 }
 
 std::string RESPParser::make_error(const std::string& msg) {
-    return "-ERR " + msg + "\r\n";
+    // OPTIMIZED: Single allocation with reserve
+    std::string result;
+    result.reserve(5 + msg.size() + 2);
+    result.append("-ERR ", 5);
+    result.append(msg);
+    result.append("\r\n", 2);
+    return result;
 }
 
 std::string RESPParser::make_bulk_string(const std::string& s) {
-    return "$" + std::to_string(s.size()) + "\r\n" + s + "\r\n";
+    // OPTIMIZED: Single allocation - pre-calculate size
+    char len_buf[24];
+    int len_len = snprintf(len_buf, sizeof(len_buf), "%zu", s.size());
+    std::string result;
+    result.reserve(1 + len_len + 2 + s.size() + 2);
+    result.push_back('$');
+    result.append(len_buf, len_len);
+    result.append("\r\n", 2);
+    result.append(s);
+    result.append("\r\n", 2);
+    return result;
 }
 
 std::string RESPParser::make_null_bulk_string() {
+    // Static response - already optimized via kNullBulkResponse
     return "$-1\r\n";
 }
 
 std::string RESPParser::make_integer(int64_t value) {
-    return ":" + std::to_string(value) + "\r\n";
+    // OPTIMIZED: Single allocation
+    char buf[24];
+    int len = snprintf(buf, sizeof(buf), "%ld", value);
+    std::string result;
+    result.reserve(1 + len + 2);
+    result.push_back(':');
+    result.append(buf, len);
+    result.append("\r\n", 2);
+    return result;
 }
 
 std::string RESPParser::make_array(int64_t count) {
-    return "*" + std::to_string(count) + "\r\n";
+    // OPTIMIZED: Single allocation
+    char buf[24];
+    int len = snprintf(buf, sizeof(buf), "%ld", count);
+    std::string result;
+    result.reserve(1 + len + 2);
+    result.push_back('*');
+    result.append(buf, len);
+    result.append("\r\n", 2);
+    return result;
 }
