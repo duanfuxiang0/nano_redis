@@ -33,15 +33,15 @@ void StringFamily::Register(CommandRegistry* registry) {
 	registry->register_command_with_context("FLUSHDB", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return FlushDB(args, ctx); });
 	registry->register_command_with_context("DBSIZE", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return DBSize(args, ctx); });
 	registry->register_command_with_context(
-	    "PING", [](const std::vector<CompactObj>&, CommandContext*) { return RESPParser::make_simple_string("PONG"); });
+	    "PING", [](const std::vector<CompactObj>&, CommandContext*) { return RESPParser::pong_response(); });
 	registry->register_command_with_context(
-	    "QUIT", [](const std::vector<CompactObj>&, CommandContext*) { return RESPParser::make_simple_string("OK"); });
+	    "QUIT", [](const std::vector<CompactObj>&, CommandContext*) { return RESPParser::ok_response(); });
 	registry->register_command_with_context(
 	    "HELLO", [](const std::vector<CompactObj>& args, CommandContext*) { return Hello(args); });
 	registry->register_command_with_context(
 	    "COMMAND", [](const std::vector<CompactObj>&, CommandContext*) {
 	        // Return empty array for COMMAND (used by redis-cli for command discovery)
-	        return RESPParser::make_array(0);
+	        return RESPParser::empty_array_response();
 	    });
 }
 
@@ -56,7 +56,7 @@ std::string StringFamily::Set(const std::vector<CompactObj>& args, CommandContex
 	const CompactObj& value = args[2];
 
 	db->Set(key, CompactObj(value));
-	return RESPParser::make_simple_string("OK");
+	return RESPParser::ok_response();
 }
 
 std::string StringFamily::Get(const std::vector<CompactObj>& args, CommandContext* ctx) {
@@ -191,7 +191,7 @@ std::string StringFamily::MSet(const std::vector<CompactObj>& args, CommandConte
 		for (size_t i = 1; i < args.size(); i += 2) {
 			db->Set(args[i], CompactObj(args[i + 1]));
 		}
-		return RESPParser::make_simple_string("OK");
+		return RESPParser::ok_response();
 	}
 
 	struct KvPair {
@@ -223,7 +223,7 @@ std::string StringFamily::MSet(const std::vector<CompactObj>& args, CommandConte
 		});
 	}
 
-	return RESPParser::make_simple_string("OK");
+	return RESPParser::ok_response();
 }
 
 std::string StringFamily::MGet(const std::vector<CompactObj>& args, CommandContext* ctx) {
@@ -305,8 +305,19 @@ std::string StringFamily::Incr(const std::vector<CompactObj>& args, CommandConte
 		return RESPParser::make_error("wrong number of arguments for 'INCR'");
 	}
 
-	std::vector<CompactObj> incr_args = {args[0], args[1], CompactObj::fromInt(1)};
-	return IncrBy(incr_args, ctx);
+	auto* db = ctx->GetDB();
+	const CompactObj& key = args[1];
+
+	int64_t new_value;
+	auto current = db->Get(key);
+	if (current) {
+		new_value = ParseInt(*current) + 1;
+	} else {
+		new_value = 1;
+	}
+
+	db->Set(key, CompactObj::fromInt(new_value));
+	return RESPParser::make_integer(new_value);
 }
 
 std::string StringFamily::Decr(const std::vector<CompactObj>& args, CommandContext* ctx) {
@@ -314,9 +325,19 @@ std::string StringFamily::Decr(const std::vector<CompactObj>& args, CommandConte
 		return RESPParser::make_error("wrong number of arguments for 'DECR'");
 	}
 
-	std::string neg_one = "-1";
-	std::vector<CompactObj> incr_args = {args[0], args[1], CompactObj::fromKey(neg_one)};
-	return IncrBy(incr_args, ctx);
+	auto* db = ctx->GetDB();
+	const CompactObj& key = args[1];
+
+	int64_t new_value;
+	auto current = db->Get(key);
+	if (current) {
+		new_value = ParseInt(*current) - 1;
+	} else {
+		new_value = -1;
+	}
+
+	db->Set(key, CompactObj::fromInt(new_value));
+	return RESPParser::make_integer(new_value);
 }
 
 std::string StringFamily::IncrBy(const std::vector<CompactObj>& args, CommandContext* ctx) {
@@ -477,14 +498,14 @@ std::string StringFamily::Select(const std::vector<CompactObj>& args, CommandCon
 			}
 		}
 
-		return RESPParser::make_simple_string("OK");
+		return RESPParser::ok_response();
 	}
 
 	if (!db->Select(db_index)) {
 		return RESPParser::make_error("DB index out of range");
 	}
 
-	return RESPParser::make_simple_string("OK");
+	return RESPParser::ok_response();
 }
 
 std::string StringFamily::Keys(const std::vector<CompactObj>& args, CommandContext* ctx) {
@@ -502,7 +523,7 @@ std::string StringFamily::FlushDB(const std::vector<CompactObj>& args, CommandCo
 	if (!ctx->shard_set || ctx->IsSingleShard()) {
 		auto* db = ctx->GetDB();
 		db->ClearCurrentDB();
-		return RESPParser::make_simple_string("OK");
+		return RESPParser::ok_response();
 	}
 
 	for (size_t shard_id = 0; shard_id < ctx->shard_set->size(); ++shard_id) {
@@ -516,7 +537,7 @@ std::string StringFamily::FlushDB(const std::vector<CompactObj>& args, CommandCo
 		});
 	}
 
-	return RESPParser::make_simple_string("OK");
+	return RESPParser::ok_response();
 }
 
 std::string StringFamily::DBSize(const std::vector<CompactObj>& args, CommandContext* ctx) {

@@ -1,8 +1,33 @@
 #include "protocol/resp_parser.h"
+#include "core/util.h"
 #include <photon/common/alog.h>
 #include <photon/net/socket.h>
 #include <cctype>
 #include <sstream>
+
+// Pre-computed static responses for hot paths
+namespace {
+const std::string kOkResponse = "+OK\r\n";
+const std::string kPongResponse = "+PONG\r\n";
+const std::string kNullBulkResponse = "$-1\r\n";
+const std::string kEmptyArrayResponse = "*0\r\n";
+}  // namespace
+
+const std::string& RESPParser::ok_response() {
+	return kOkResponse;
+}
+
+const std::string& RESPParser::pong_response() {
+	return kPongResponse;
+}
+
+const std::string& RESPParser::null_bulk_response() {
+	return kNullBulkResponse;
+}
+
+const std::string& RESPParser::empty_array_response() {
+	return kEmptyArrayResponse;
+}
 
 int RESPParser::fill_buffer() {
     if (buffer_pos_ >= buffer_size_) {
@@ -90,7 +115,10 @@ int RESPParser::parse_array(std::vector<CompactObj>& args) {
         return -1;
     }
 
-    int64_t count = std::stoll(line);
+    int64_t count = 0;
+    if (!string2ll(line.data(), line.size(), &count)) {
+        return -1;
+    }
     if (count < 0) {
         return 0;
     }
@@ -103,7 +131,10 @@ int RESPParser::parse_array(std::vector<CompactObj>& args) {
 
         if (c == '$') {
             std::string len_str = read_line();
-            int64_t len = std::stoll(len_str);
+            int64_t len = 0;
+            if (!string2ll(len_str.data(), len_str.size(), &len)) {
+                return -1;
+            }
             std::string bulk = read_bulk_string(len);
             args.push_back(CompactObj::fromKey(bulk));
         } else if (c == '+') {
@@ -137,13 +168,20 @@ int RESPParser::parse_value(ParsedValue& value) {
             return 0;
         case ':': {
             value.type = DataType::Integer;
-            int64_t int_val = std::stoll(read_line());
+            std::string line = read_line();
+            int64_t int_val = 0;
+            if (!string2ll(line.data(), line.size(), &int_val)) {
+                return -1;
+            }
             value.obj_value = CompactObj::fromInt(int_val);
             return 0;
         }
         case '$': {
             std::string len_str = read_line();
-            int64_t len = std::stoll(len_str);
+            int64_t len = 0;
+            if (!string2ll(len_str.data(), len_str.size(), &len)) {
+                return -1;
+            }
             value.type = DataType::BulkString;
             if (len >= 0) {
                 value.obj_value = CompactObj::fromKey(read_bulk_string(len));

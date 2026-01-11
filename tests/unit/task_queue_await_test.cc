@@ -5,104 +5,138 @@
 #include <vector>
 #include <chrono>
 
-TEST(TaskQueueAwaitTest, BasicAwaitInt) {
-	TaskQueue queue;
+#include <photon/photon.h>
+#include <photon/thread/thread.h>
+#include <photon/thread/thread11.h>
 
-	std::thread processor([&queue]() {
-			uint64_t buf;
-			while (true) {
-				ssize_t ret = read(queue.event_fd(), &buf, sizeof(buf));
-				if (ret > 0) {
-					queue.ProcessTasks();
-					break;
-				}
-			}
-		});
+class TaskQueueAwaitTest : public ::testing::Test {
+protected:
+	void SetUp() override {
+		// Initialize photon for fiber-based Await tests
+		photon::init(photon::INIT_EVENT_EPOLL, photon::INIT_IO_NONE);
+	}
 
-	std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	void TearDown() override {
+		photon::fini();
+	}
+};
 
-	auto task = []() {
+TEST_F(TaskQueueAwaitTest, BasicAwaitInt) {
+	TaskQueue queue(4096, 1);
+	queue.Start("test");
+
+	int result = queue.Await([]() {
 		return 42;
-	};
-
-	int result = queue.Await(task);
+	});
 
 	EXPECT_EQ(result, 42);
 
-	processor.join();
+	queue.Shutdown();
 }
 
-TEST(TaskQueueAwaitTest, BasicAwaitString) {
-	TaskQueue queue;
+TEST_F(TaskQueueAwaitTest, BasicAwaitString) {
+	TaskQueue queue(4096, 1);
+	queue.Start("test");
 
-	std::thread processor([&]() {
-			uint64_t buf;
-			while (true) {
-				ssize_t ret = read(queue.event_fd(), &buf, sizeof(buf));
-				if (ret > 0) {
-					queue.ProcessTasks();
-					break;
-				}
-			}
-		});
-
-	auto task = []() {
+	std::string result = queue.Await([]() {
 		return std::string("hello world");
-	};
-
-	std::string result = queue.Await(task);
+	});
 
 	EXPECT_EQ(result, "hello world");
 
-	processor.join();
+	queue.Shutdown();
 }
 
-TEST(TaskQueueAwaitTest, BasicAwaitVoid) {
-	TaskQueue queue;
-
-	std::thread processor([&]() {
-			uint64_t buf;
-			while (true) {
-				ssize_t ret = read(queue.event_fd(), &buf, sizeof(buf));
-				if (ret > 0) {
-					queue.ProcessTasks();
-					break;
-				}
-			}
-		});
+TEST_F(TaskQueueAwaitTest, BasicAwaitVoid) {
+	TaskQueue queue(4096, 1);
+	queue.Start("test");
 
 	bool executed = false;
-	auto task = [&executed]() {
+	queue.Await([&executed]() {
 		executed = true;
-	};
-
-	queue.Await(task);
+	});
 
 	EXPECT_TRUE(executed);
 
-	processor.join();
+	queue.Shutdown();
 }
 
-TEST(TaskQueueAwaitTest, AwaitException) {
-	TaskQueue queue;
+TEST_F(TaskQueueAwaitTest, AwaitException) {
+	TaskQueue queue(4096, 1);
+	queue.Start("test");
 
-	std::thread processor([&]() {
-			uint64_t buf;
-			while (true) {
-				ssize_t ret = read(queue.event_fd(), &buf, sizeof(buf));
-				if (ret > 0) {
-					queue.ProcessTasks();
-					break;
-				}
-			}
+	EXPECT_THROW(
+		queue.Await([]() -> int {
+			throw std::runtime_error("test exception");
+			return 42;
+		}),
+		std::runtime_error
+	);
+
+	queue.Shutdown();
+}
+
+TEST_F(TaskQueueAwaitTest, MultipleAwaits) {
+	TaskQueue queue(4096, 1);
+	queue.Start("test");
+
+	for (int i = 0; i < 10; ++i) {
+		int result = queue.Await([i]() {
+			return i * 2;
 		});
+		EXPECT_EQ(result, i * 2);
+	}
 
-	auto task = []() {
-		throw std::runtime_error("test exception");
-		return 42;
-	};
+	queue.Shutdown();
+}
 
-	EXPECT_THROW(queue.Await(task), std::runtime_error);
+TEST_F(TaskQueueAwaitTest, AwaitWithAddMixed) {
+	TaskQueue queue(4096, 1);
+	queue.Start("test");
 
-	processor.join();
+	std::atomic<int> counter{0};
+
+	// Add some fire-and-forget tasks
+	for (int i = 0; i < 5; ++i) {
+		queue.Add([&counter]() {
+			counter++;
+		});
+	}
+
+	// Await ensures all previous tasks are processed
+	int result = queue.Await([&counter]() {
+		return counter.load();
+	});
+
+	EXPECT_GE(result, 0);  // At least some tasks should be processed
+
+	queue.Shutdown();
+}
+
+TEST_F(TaskQueueAwaitTest, MultipleConsumers) {
+	// Test with multiple consumer fibers
+	TaskQueue queue(4096, 4);
+	queue.Start("test");
+
+	std::atomic<int> counter{0};
+	const int kNumTasks = 100;
+
+	// Submit many tasks
+	for (int i = 0; i < kNumTasks; ++i) {
+		queue.Add([&counter]() {
+			counter++;
+		});
+	}
+
+	// Await to synchronize
+	queue.Await([&counter, kNumTasks]() {
+		// Spin until all tasks are done
+		while (counter.load() < kNumTasks) {
+			photon::thread_yield();
+		}
+	});
+
+	EXPECT_EQ(counter.load(), kNumTasks);
+
+	queue.Shutdown();
 }

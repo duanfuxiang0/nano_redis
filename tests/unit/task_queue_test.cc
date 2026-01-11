@@ -7,7 +7,8 @@
 class TaskQueueTest : public ::testing::Test {
 protected:
 	void SetUp() override {
-		queue_ = new TaskQueue(4096);
+		// Create queue without starting consumer fibers for basic tests
+		queue_ = new TaskQueue(4096, 0);
 	}
 
 	void TearDown() override {
@@ -46,7 +47,7 @@ TEST_F(TaskQueueTest, MultipleTasks) {
 TEST_F(TaskQueueTest, ProducerConsumer) {
 	const int kNumTasks = 1000;
 	std::atomic<int> completed_count(0);
-	std::atomic<bool> consumer_done(false);
+	std::atomic<bool> producer_done(false);
 
 	std::thread producer([&]() {
 		for (int i = 0; i < kNumTasks; ++i) {
@@ -56,20 +57,20 @@ TEST_F(TaskQueueTest, ProducerConsumer) {
 				std::this_thread::yield();
 			}
 		}
+		producer_done = true;
 	});
 
 	std::thread consumer([&]() {
-		while (completed_count < kNumTasks) {
+		while (!producer_done || completed_count < kNumTasks) {
 			queue_->ProcessTasks();
+			std::this_thread::yield();
 		}
-		consumer_done = true;
 	});
 
 	producer.join();
 	consumer.join();
 
 	EXPECT_EQ(completed_count, kNumTasks);
-	EXPECT_TRUE(consumer_done);
 }
 
 TEST_F(TaskQueueTest, MultipleProducers) {
@@ -77,7 +78,7 @@ TEST_F(TaskQueueTest, MultipleProducers) {
 	const int kTasksPerProducer = 50;
 	const int kTotalTasks = kNumProducers * kTasksPerProducer;
 	std::atomic<int> completed_count(0);
-	std::atomic<bool> consumer_done(false);
+	std::atomic<int> producers_done(0);
 	std::vector<std::thread> producers;
 
 	for (int p = 0; p < kNumProducers; ++p) {
@@ -91,14 +92,15 @@ TEST_F(TaskQueueTest, MultipleProducers) {
 				}
 				local_count++;
 			}
+			producers_done++;
 		});
 	}
 
 	std::thread consumer([&]() {
-		while (completed_count < kTotalTasks) {
+		while (producers_done < kNumProducers || completed_count < kTotalTasks) {
 			queue_->ProcessTasks();
+			std::this_thread::yield();
 		}
-		consumer_done = true;
 	});
 
 	for (auto& t : producers) {
@@ -107,7 +109,6 @@ TEST_F(TaskQueueTest, MultipleProducers) {
 	consumer.join();
 
 	EXPECT_EQ(completed_count, kTotalTasks);
-	EXPECT_TRUE(consumer_done);
 }
 
 TEST_F(TaskQueueTest, EmptyQueue) {
@@ -125,7 +126,7 @@ TEST_F(TaskQueueTest, NonEmptyQueue) {
 
 TEST_F(TaskQueueTest, QueueCapacity) {
 	const size_t kCapacity = 4096;
-	TaskQueue small_queue(kCapacity);
+	TaskQueue small_queue(kCapacity, 0);
 
 	size_t count = 0;
 	for (; count < kCapacity + 100; ++count) {

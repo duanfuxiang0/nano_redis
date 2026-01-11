@@ -258,7 +258,7 @@ std::string ListFamily::LSet(const std::vector<CompactObj>& args, CommandContext
 	}
 
 	list->at(index) = args[3];
-	return RESPParser::make_simple_string("OK");
+	return RESPParser::ok_response();
 }
 
 std::string ListFamily::LRange(const std::vector<CompactObj>& args, CommandContext* ctx) {
@@ -328,7 +328,7 @@ std::string ListFamily::LTrim(const std::vector<CompactObj>& args, CommandContex
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
-		return RESPParser::make_simple_string("OK");
+		return RESPParser::ok_response();
 	}
 
 	int64_t start, stop;
@@ -355,7 +355,7 @@ std::string ListFamily::LTrim(const std::vector<CompactObj>& args, CommandContex
 
 	if (start >= len || start > stop) {
 		db->Del(key);
-		return RESPParser::make_simple_string("OK");
+		return RESPParser::ok_response();
 	}
 
 	if (stop >= len) {
@@ -368,7 +368,7 @@ std::string ListFamily::LTrim(const std::vector<CompactObj>& args, CommandContex
 	}
 	*list = std::move(trimmed);
 
-	return RESPParser::make_simple_string("OK");
+	return RESPParser::ok_response();
 }
 
 std::string ListFamily::LRem(const std::vector<CompactObj>& args, CommandContext* ctx) {

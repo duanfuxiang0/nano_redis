@@ -2,8 +2,6 @@
 #include "core/command_context.h"
 #include "core/compact_obj.h"
 #include <absl/container/flat_hash_map.h>
-#include <algorithm>
-#include <cctype>
 #include <string>
 #include <vector>
 
@@ -26,21 +24,31 @@ std::string CommandRegistry::execute(const std::vector<CompactObj>& args, Comman
 	}
 
 	const CompactObj& cmd_obj = args[0];
-	std::string cmd = cmd_obj.toString();
+	absl::string_view cmd_sv = cmd_obj.getStringView();
+	if (cmd_sv.empty()) {
+		// Fallback for non-string commands (should be rare).
+		std::string cmd = cmd_obj.toString();
+		auto it_with_ctx = handlers_with_context_.find(cmd);
+		if (it_with_ctx != handlers_with_context_.end()) {
+			return it_with_ctx->second(args, ctx);
+		}
 
-	// Convert command to uppercase for case-insensitive matching
-	std::transform(cmd.begin(), cmd.end(), cmd.begin(),
-	               [](unsigned char c) { return std::toupper(c); });
+		auto it = handlers_.find(cmd);
+		if (it != handlers_.end()) {
+			return it->second(args);
+		}
+		return "-ERR Unknown command '" + cmd + "'\r\n";
+	}
 
-	auto it_with_ctx = handlers_with_context_.find(cmd);
+	auto it_with_ctx = handlers_with_context_.find(cmd_sv);
 	if (it_with_ctx != handlers_with_context_.end()) {
 		return it_with_ctx->second(args, ctx);
 	}
 
-	auto it = handlers_.find(cmd);
+	auto it = handlers_.find(cmd_sv);
 	if (it != handlers_.end()) {
 		return it->second(args);
 	} else {
-		return "-ERR Unknown command '" + cmd + "'\r\n";
+		return "-ERR Unknown command '" + std::string(cmd_sv) + "'\r\n";
 	}
 }

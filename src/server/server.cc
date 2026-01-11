@@ -25,7 +25,7 @@ std::string RedisServer::process_command(const std::vector<CompactObj>& args) {
 }
 
 int RedisServer::handle_client(photon::net::ISocketStream* stream) {
-	LOG_INFO("New client connected");
+	// LOG_INFO("New client connected");
 
 	RESPParser parser(stream);
 
@@ -34,12 +34,12 @@ int RedisServer::handle_client(photon::net::ISocketStream* stream) {
 		int ret = parser.parse_command(args);
 
 		if (ret < 0) {
-			LOG_INFO("Client disconnected");
+			// LOG_INFO("Client disconnected");
 			return 0;
 		}
 
 		if (!args.empty()) {
-			LOG_INFO("Received command: `", args[0].toString());
+			// LOG_INFO("Received command: `", args[0].toString());
 			std::string response = process_command(args);
 
 			std::string cmd_str = args[0].toString();

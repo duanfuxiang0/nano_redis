@@ -50,7 +50,7 @@ std::string HashFamily::HSet(const std::vector<CompactObj>& args, CommandContext
 		(*hash_table)[field] = value;
 	}
 
-	return RESPParser::make_simple_string("OK");
+	return RESPParser::ok_response();
 }
 
 std::string HashFamily::HGet(const std::vector<CompactObj>& args, CommandContext* ctx) {
@@ -107,7 +107,7 @@ std::string HashFamily::HMSet(const std::vector<CompactObj>& args, CommandContex
 		(*hash_table)[field] = value;
 	}
 
-	return RESPParser::make_simple_string("OK");
+	return RESPParser::ok_response();
 }
 
 std::string HashFamily::HMGet(const std::vector<CompactObj>& args, CommandContext* ctx) {

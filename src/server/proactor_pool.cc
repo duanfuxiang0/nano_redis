@@ -15,6 +15,25 @@
 
 #include <netinet/in.h>
 #include <unistd.h>
+#include <string_view>
+
+namespace {
+bool EqualsIgnoreCase(std::string_view a, std::string_view b) {
+	if (a.size() != b.size()) {
+		return false;
+	}
+	for (size_t i = 0; i < a.size(); ++i) {
+		unsigned char ca = static_cast<unsigned char>(a[i]);
+		unsigned char cb = static_cast<unsigned char>(b[i]);
+		unsigned char ua = (ca >= 'a' && ca <= 'z') ? static_cast<unsigned char>(ca - 'a' + 'A') : ca;
+		unsigned char ub = (cb >= 'a' && cb <= 'z') ? static_cast<unsigned char>(cb - 'a' + 'A') : cb;
+		if (ua != ub) {
+			return false;
+		}
+	}
+	return true;
+}
+}  // namespace
 
 ProactorPool::ProactorPool(size_t num_vcpus, uint16_t port)
 	: num_vcpus_(num_vcpus), port_(port) {
@@ -53,27 +72,21 @@ void ProactorPool::Stop() {
 		return;
 	}
 
+	running_ = false;
+
 	// Terminate accept loops from within each vCPU via its TaskQueue.
 	// This ensures server->start_loop(true) can exit and threads can join.
+	// Note: TaskQueue::Shutdown() is called in VcpuMain after the accept loop exits.
 	if (shard_set_) {
 		for (size_t i = 0; i < num_vcpus_; ++i) {
 			photon::net::ISocketServer* server = servers_[i];
-			shard_set_->Await(i, [server]() {
+			shard_set_->Add(i, [server]() {
 				if (server) {
 					server->terminate();
 				}
 			});
 		}
 		shard_set_->Stop();
-	}
-
-	running_ = false;
-
-	// Wake up task-queue processor fibers so they can observe running_ == false.
-	if (shard_set_) {
-		for (size_t i = 0; i < num_vcpus_; ++i) {
-			shard_set_->Add(i, []() {});
-		}
 	}
 }
 
@@ -152,17 +165,8 @@ void ProactorPool::VcpuMain(size_t vcpu_index) {
 	LOG_INFO("vCPU ` (Shard `) listening on port ` with SO_REUSEPORT",
 		vcpu_index, vcpu_index, port_);
 
-	// Create a fiber to process the task queue (for receiving cross-shard requests)
-	photon::thread_create11([this, shard]() {
-		while (running_) {
-			int ret = photon::wait_for_fd_readable(shard->GetTaskQueue()->event_fd());
-			if (ret < 0) {
-				photon::thread_usleep(1000);
-				continue;
-			}
-			shard->GetTaskQueue()->ProcessTasks();
-		}
-	});
+	// Start the task queue consumer fibers (for receiving cross-shard requests)
+	shard->GetTaskQueue()->Start("shard-" + std::to_string(vcpu_index));
 
 	// Signal that this vCPU is ready
 	{
@@ -177,6 +181,9 @@ void ProactorPool::VcpuMain(size_t vcpu_index) {
 
 	// Main accept loop - blocks here until server is terminated
 	server->start_loop(true);
+
+	// Shutdown the task queue consumer fibers before photon::fini()
+	shard->GetTaskQueue()->Shutdown();
 }
 
 int ProactorPool::HandleConnection(photon::net::ISocketStream* stream) {
@@ -184,27 +191,30 @@ int ProactorPool::HandleConnection(photon::net::ISocketStream* stream) {
 	EngineShard* local_shard = EngineShard::tlocal();
 	size_t vcpu_index = local_shard->shard_id();
 
-	LOG_INFO("vCPU `: New client connected (Connection Fiber = Coordinator)", vcpu_index);
+	// LOG_INFO("vCPU `: New client connected (Connection Fiber = Coordinator)", vcpu_index);
 
 	RESPParser parser(stream);
 
+	// Reuse args vector across commands to avoid repeated allocations
+	std::vector<CompactObj> args;
+	args.reserve(8);  // Pre-allocate for typical command size
+
 	while (running_) {
-		std::vector<CompactObj> args;
+		args.clear();  // Clear but keep capacity
 		int ret = parser.parse_command(args);
 
 		if (ret < 0) {
-			LOG_INFO("vCPU `: Client disconnected", vcpu_index);
+			// LOG_INFO("vCPU `: Client disconnected", vcpu_index);
 			return 0;
 		}
 
 		if (args.empty()) {
 			continue;
 		}
-
-		std::string cmd_str = args[0].toString();
 		
 		// Handle QUIT command
-		if (cmd_str == "QUIT") {
+		const std::string_view cmd_sv = args[0].getStringView();
+		if (!cmd_sv.empty() && EqualsIgnoreCase(cmd_sv, "QUIT")) {
 			std::string response = "+OK\r\n";
 			stream->send(response.data(), response.size());
 			photon::thread_usleep(10000);
@@ -229,13 +239,20 @@ int ProactorPool::HandleConnection(photon::net::ISocketStream* stream) {
 			} else {
 				// Key belongs to another shard - forward request via TaskQueue
 				// The Fiber will suspend here (not block the thread!)
-				std::vector<CompactObj> forwarded_args = args;
+				// Critical: avoid deep-copying `args` (would allocate/copy all strings).
+				// Move the parsed args into the cross-shard task instead.
+				std::vector<CompactObj> forwarded_args;
+				forwarded_args.swap(args);
 				response = shard_set_->Await(target_shard, [this, forwarded_args = std::move(forwarded_args), target_shard]() mutable {
 					EngineShard* target = shard_set_->GetShard(target_shard);
 					CommandContext ctx(target, shard_set_.get(), num_vcpus_,
 						target->GetDB().CurrentDB());
 					return CommandRegistry::instance().execute(forwarded_args, &ctx);
 				});
+				// Restore minimal capacity for the next parse without forcing a large realloc.
+				if (args.capacity() < 8) {
+					args.reserve(8);
+				}
 			}
 		} else {
 			// Global command - execute locally

@@ -23,6 +23,12 @@ public:
 
 	int parse_command(std::vector<CompactObj>& args);
 
+	// Pre-computed common responses for hot paths
+	static const std::string& ok_response();
+	static const std::string& pong_response();
+	static const std::string& null_bulk_response();
+	static const std::string& empty_array_response();
+
 	static std::string make_simple_string(const std::string& s);
 	static std::string make_error(const std::string& msg);
 	static std::string make_bulk_string(const std::string& s);
