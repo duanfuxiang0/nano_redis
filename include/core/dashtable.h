@@ -11,7 +11,7 @@ namespace {
 constexpr uint64_t kInitialSegmentCount = 1;
 constexpr uint64_t kDefaultFixedBucketCount = 16;
 constexpr float kSplitThreshold = 0.8f;
-} // namespace
+}
 
 template <typename K, typename V>
 class DashTable {

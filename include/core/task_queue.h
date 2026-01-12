@@ -14,94 +14,55 @@
 #include <photon/thread/thread.h>
 #include <photon/thread/thread11.h>
 
-/**
- * @brief MPMC task-queue with multiple consumer fibers.
- *
- * Inspired by Dragonfly's TaskQueue design:
- * - Lock-free MPMC bounded queue (based on Dmitry Vyukov's algorithm)
- * - Multiple consumer fibers for parallel task execution
- * - Photon semaphore for efficient fiber-friendly notification
- *
- * Design:
- *   Multiple producers (IO threads) -> MPMC Queue -> Multiple consumer fibers
- *
- * Usage:
- *   TaskQueue queue(4096, 1);  // queue_size, num_consumer_fibers
- *   queue.Start("worker");      // Start consumer fibers
- *   queue.Add([]{ ... });       // Submit tasks
- *   queue.Await([]{ return 42; }); // Submit and wait for result
- *   queue.Shutdown();           // Stop consumers
- */
+// 获取当前硬件的缓存行大小，如果不支持则默认 64
+#ifdef __cpp_lib_hardware_interference_size
+using std::hardware_constructive_interference_size;
+using std::hardware_destructive_interference_size;
+#else
+// 典型的 x86_64 缓存行大小
+constexpr std::size_t hardware_constructive_interference_size = 64;
+constexpr std::size_t hardware_destructive_interference_size = 64;
+#endif
+
+// MPMC 任务队列，支持多个消费协程
 class TaskQueue {
 public:
-	/**
-	 * @brief Construct a TaskQueue
-	 * @param queue_size Capacity of the queue (must be power of 2)
-	 * @param num_consumers Number of consumer fibers (default: 1)
-	 */
 	explicit TaskQueue(size_t queue_size = 4096, size_t num_consumers = 1);
 	~TaskQueue();
 
-	// Non-copyable
 	TaskQueue(const TaskQueue&) = delete;
 	TaskQueue& operator=(const TaskQueue&) = delete;
 
 public:
-	/**
-	 * @brief Try to add a task to the queue (non-blocking)
-	 * @return true if task was added, false if queue is full
-	 */
+	// 非阻塞添加任务
 	template <typename F>
 	bool TryAdd(F&& func);
 
-	/**
-	 * @brief Add a task to the queue (may spin if full)
-	 * @return true if task was added
-	 */
+	// 添加任务，队满时等待
 	template <typename F>
 	bool Add(F&& func);
 
-	/**
-	 * @brief Submit a task and wait for its completion
-	 * The calling fiber will suspend (not block the thread) while waiting.
-	 * @return The result of func()
-	 */
+	// 提交任务并等待结果
 	template <typename F>
 	auto Await(F&& func) -> decltype(func());
 
-	/**
-	 * @brief Start consumer fibers
-	 * Must be called from the owning vCPU thread.
-	 * @param base_name Base name for consumer fibers
-	 */
+	// 启动消费协程
 	void Start(const std::string& base_name = "tq");
 
-	/**
-	 * @brief Shutdown the queue and wait for consumer fibers to finish
-	 */
+	// 关闭队列
 	void Shutdown();
 
-	/**
-	 * @brief Check if queue is empty
-	 */
 	bool Empty() const;
-
-	/**
-	 * @brief Process tasks (for external use, deprecated - use Start() instead)
-	 */
 	void ProcessTasks();
-
-	/**
-	 * @brief Get event fd for external polling (deprecated)
-	 */
-	int event_fd() const { return -1; }
+	int event_fd() const {
+		return -1;
+	}
 
 private:
 	static size_t RoundUpPowerOfTwo(size_t x);
 
 	using CbFunc = std::function<void()>;
 
-	// MPMC bounded queue cell
 	struct Cell {
 		std::atomic<size_t> sequence;
 		alignas(CbFunc) char storage[sizeof(CbFunc)];
@@ -109,35 +70,23 @@ private:
 
 	bool TryEnqueue(CbFunc&& func);
 	bool TryDequeue(CbFunc& func);
-	void Run();  // Consumer fiber main loop
+	void Run();
 
 private:
-	static constexpr size_t kCacheLineSize = 64;
-
-	// Queue storage
 	std::unique_ptr<Cell[]> buffer_;
 	size_t capacity_;
 	size_t buffer_mask_;
 
-	// Separate cache lines for producer and consumer indices
-	alignas(kCacheLineSize) std::atomic<size_t> enqueue_pos_{0};
-	alignas(kCacheLineSize) std::atomic<size_t> dequeue_pos_{0};
+	alignas(hardware_destructive_interference_size) std::atomic<size_t> enqueue_pos_ {0};
+	alignas(hardware_destructive_interference_size) std::atomic<size_t> dequeue_pos_ {0};
 
-	// Photon semaphore for consumer notification
 	photon::semaphore pull_sem_;
-	// Number of consumer fibers currently waiting for work.
-	// Used to avoid excessive cross-thread semaphore signaling under load.
-	std::atomic<uint64_t> idler_{0};
+	std::atomic<uint64_t> idler_ {0};
 
-	// Consumer fibers
 	size_t num_consumers_;
 	std::vector<photon::join_handle*> consumer_fibers_;
-	std::atomic<bool> is_closed_{false};
+	std::atomic<bool> is_closed_ {false};
 };
-
-// ============================================================================
-// Template implementations
-// ============================================================================
 
 template <typename F>
 bool TaskQueue::TryAdd(F&& func) {
@@ -166,7 +115,7 @@ bool TaskQueue::Add(F&& func) {
 	// - Many connection fibers spin here, occupying the OS thread
 	// - Consumer fibers never get a chance to execute
 	// - Use thread_usleep() to truly release the OS thread
-	static constexpr uint64_t kSleepUsec = 1000;  // 1ms
+	static constexpr uint64_t kSleepUsec = 1000; // 1ms
 	while (!is_closed_.load(std::memory_order_relaxed)) {
 		photon::thread_usleep(kSleepUsec);
 		if (TryAdd(std::forward<F>(func))) {

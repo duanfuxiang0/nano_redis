@@ -52,7 +52,7 @@ DashTable<K, V>& DashTable<K, V>::operator=(DashTable&& other) noexcept {
 template <typename K, typename V>
 void DashTable<K, V>::Insert(const K& key, V&& value) {
 	uint64_t seg_idx = GetSegmentIndex(key);
-	Segment* segment = segment_directory_[seg_idx].get(); 
+	Segment* segment = segment_directory_[seg_idx].get();
 
 	segment->table.insert_or_assign(key, std::forward<V>(value));
 
@@ -151,8 +151,7 @@ void DashTable<K, V>::SplitSegment(uint32_t seg_id) {
     }
 
     global_depth_++;
-    
-    // 重新计算source segment在扩展后的directory中的位置
+
     seg_id = source->segment_id;
     source = segment_directory_[seg_id].get();
   }
@@ -178,7 +177,7 @@ void DashTable<K, V>::SplitSegment(uint32_t seg_id) {
 
   for (const auto& [hash, key] : items) {
     uint32_t new_idx = hash >> (64 - global_depth_);
-    
+
     if (new_idx >= chunk_mid && new_idx < start_idx + chunk_size) {
       auto it = source->table.find(key);
       if (it != source->table.end()) {
@@ -210,7 +209,7 @@ bool DashTable<K, V>::IsDirectoryConsistent() const {
 		return false;
 	}
 
-	uint64_t expected_dir_size = global_depth_ == 0 ? 1 : (1ULL << global_depth_);
+	uint64_t expected_dir_size = global_depth_ == 0 ?1 : (1ULL << global_depth_);
 	if (segment_directory_.size() != expected_dir_size) {
 		return false;
 	}

@@ -23,7 +23,6 @@ public:
 
 	int parse_command(std::vector<CompactObj>& args);
 
-	// Pre-computed common responses for hot paths
 	static const std::string& ok_response();
 	static const std::string& pong_response();
 	static const std::string& null_bulk_response();
@@ -48,7 +47,6 @@ private:
 
 private:
 	photon::net::ISocketStream* stream_;
-	// OPTIMIZED: Larger buffer reduces syscall overhead, especially for pipelined requests
 	char buffer_[8192];
 	size_t buffer_pos_ = 0;
 	size_t buffer_size_ = 0;

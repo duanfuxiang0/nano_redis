@@ -4,9 +4,9 @@
 
 namespace {
 constexpr size_t kMinCapacity = 2;
-}  // namespace
+}
 
-size_t TaskQueue::RoundUpPowerOfTwo(size_t x) {
+size_t TaskQueue::RoundUpPowerOfTwo(size_t x) {  // 找最接近的2的幂
 	if (x < kMinCapacity) {
 		return kMinCapacity;
 	}
@@ -23,7 +23,6 @@ TaskQueue::TaskQueue(size_t queue_size, size_t num_consumers)
 	buffer_mask_ = capacity_ - 1;
 	buffer_.reset(new Cell[capacity_]);
 
-	// Initialize sequence numbers
 	for (size_t i = 0; i < capacity_; ++i) {
 		buffer_[i].sequence.store(i, std::memory_order_relaxed);
 	}
@@ -34,16 +33,14 @@ TaskQueue::TaskQueue(size_t queue_size, size_t num_consumers)
 TaskQueue::~TaskQueue() {
 	Shutdown();
 
-	// Clean up any remaining items in the queue
 	for (;;) {
 		size_t pos = dequeue_pos_.fetch_add(1, std::memory_order_relaxed);
 		Cell& cell = buffer_[pos & buffer_mask_];
 		size_t seq = cell.sequence.load(std::memory_order_acquire);
 		intptr_t dif = static_cast<intptr_t>(seq) - static_cast<intptr_t>(pos + 1);
 		if (dif < 0) {
-			break;  // Queue is empty
+			break;
 		}
-		// Destroy the function object
 		reinterpret_cast<CbFunc*>(&cell.storage)->~CbFunc();
 	}
 }
@@ -59,19 +56,15 @@ bool TaskQueue::TryEnqueue(CbFunc&& func) {
 		intptr_t dif = static_cast<intptr_t>(seq) - static_cast<intptr_t>(pos);
 
 		if (dif == 0) {
-			// Cell is available, try to claim it
 			if (enqueue_pos_.compare_exchange_weak(pos, pos + 1,
 			                                       std::memory_order_relaxed)) {
 				break;
 			}
 		} else if (dif < 0) {
-			// Queue is full
 			return false;
 		}
-		// dif > 0: another thread is writing to this cell, retry
 	}
 
-	// Construct the function in-place
 	new (&cell->storage) CbFunc(std::move(func));
 	cell->sequence.store(pos + 1, std::memory_order_release);
 	return true;
@@ -88,24 +81,19 @@ bool TaskQueue::TryDequeue(CbFunc& func) {
 		intptr_t dif = static_cast<intptr_t>(seq) - static_cast<intptr_t>(pos + 1);
 
 		if (dif == 0) {
-			// Cell has data, try to claim it
 			if (dequeue_pos_.compare_exchange_weak(pos, pos + 1,
 			                                       std::memory_order_relaxed)) {
 				break;
 			}
 		} else if (dif < 0) {
-			// Queue is empty
 			return false;
 		}
-		// dif > 0: another thread is reading from this cell, retry
 	}
 
-	// Move the function out and destroy it
 	CbFunc& src = *reinterpret_cast<CbFunc*>(&cell->storage);
 	func = std::move(src);
 	src.~CbFunc();
 
-	// Release the cell for reuse
 	cell->sequence.store(pos + buffer_mask_ + 1, std::memory_order_release);
 	return true;
 }
@@ -124,11 +112,6 @@ void TaskQueue::Run() {
 
 	CbFunc func;
 	while (!is_closed_.load(std::memory_order_relaxed)) {
-		// Fast path: execute a bounded batch, then yield once for fairness.
-		// This avoids both extremes:
-		// - draining forever without yielding (starvation)
-		// - yielding after every task (huge overhead / throughput collapse)
-		// Throughput-oriented: allow a larger batch to amortize fiber scheduling costs.
 		static constexpr uint64_t kMaxBatch = 256;
 		uint64_t processed = 0;
 		while (processed < kMaxBatch && TryDequeue(func)) {
@@ -140,10 +123,6 @@ void TaskQueue::Run() {
 			continue;
 		}
 
-		// Slow path: no work. Follow photon::common::RingChannel's strategy:
-		// yield a bit first (helps load balancing, keeps photon::now fresh),
-		// then go into semaphore wait with a timeout as a backstop.
-		// OPTIMIZED: Drastically reduced delays for better responsiveness under high load
 		photon::thread_yield();
 		IdlerGuard guard(idler_);
 
@@ -169,7 +148,6 @@ void TaskQueue::Run() {
 		}
 	}
 
-	// Drain remaining tasks after shutdown
 	while (TryDequeue(func)) {
 		func();
 	}
@@ -185,13 +163,11 @@ void TaskQueue::Start(const std::string& base_name) {
 
 void TaskQueue::Shutdown() {
 	if (is_closed_.exchange(true)) {
-		return;  // Already closed
+		return;
 	}
 
-	// Wake up all consumer fibers
 	pull_sem_.signal(num_consumers_);
 
-	// Wait for all consumer fibers to finish
 	for (auto* handle : consumer_fibers_) {
 		photon::thread_join(handle);
 	}
@@ -207,7 +183,6 @@ bool TaskQueue::Empty() const {
 }
 
 void TaskQueue::ProcessTasks() {
-	// Legacy method for backward compatibility
 	CbFunc func;
 	while (TryDequeue(func)) {
 		func();

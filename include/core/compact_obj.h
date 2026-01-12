@@ -123,9 +123,6 @@ public:
 	void setList();
 	void setZset();
 
-
-
-
 private:
 	void setTag(uint8_t tag);
 	void setFlag(uint8_t flag);
