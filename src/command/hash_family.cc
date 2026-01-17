@@ -5,30 +5,30 @@
 #include <sstream>
 
 void HashFamily::Register(CommandRegistry* registry) {
-	registry->register_command_with_context("HSET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HSet(args, ctx); });
-	registry->register_command_with_context("HGET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HGet(args, ctx); });
-	registry->register_command_with_context("HMSET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HMSet(args, ctx); });
-	registry->register_command_with_context("HMGET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HMGet(args, ctx); });
-	registry->register_command_with_context("HDEL", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HDel(args, ctx); });
-	registry->register_command_with_context("HEXISTS", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HExists(args, ctx); });
-	registry->register_command_with_context("HLEN", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HLen(args, ctx); });
-	registry->register_command_with_context("HKEYS", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HKeys(args, ctx); });
-	registry->register_command_with_context("HVALS", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HVals(args, ctx); });
-	registry->register_command_with_context("HGETALL", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HGetAll(args, ctx); });
-	registry->register_command_with_context("HINCRBY", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HIncrBy(args, ctx); });
-	registry->register_command_with_context("HSTRLEN", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HStrLen(args, ctx); });
-	registry->register_command_with_context("HRANDFIELD", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HRandField(args, ctx); });
-	registry->register_command_with_context("HSCAN", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return HScan(args, ctx); });
+	registry->register_command_with_context("HSET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HSet(args, ctx); });
+	registry->register_command_with_context("HGET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HGet(args, ctx); });
+	registry->register_command_with_context("HMSET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HMSet(args, ctx); });
+	registry->register_command_with_context("HMGET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HMGet(args, ctx); });
+	registry->register_command_with_context("HDEL", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HDel(args, ctx); });
+	registry->register_command_with_context("HEXISTS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HExists(args, ctx); });
+	registry->register_command_with_context("HLEN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HLen(args, ctx); });
+	registry->register_command_with_context("HKEYS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HKeys(args, ctx); });
+	registry->register_command_with_context("HVALS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HVals(args, ctx); });
+	registry->register_command_with_context("HGETALL", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HGetAll(args, ctx); });
+	registry->register_command_with_context("HINCRBY", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HIncrBy(args, ctx); });
+	registry->register_command_with_context("HSTRLEN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HStrLen(args, ctx); });
+	registry->register_command_with_context("HRANDFIELD", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HRandField(args, ctx); });
+	registry->register_command_with_context("HSCAN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HScan(args, ctx); });
 }
 
-std::string HashFamily::HSet(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string HashFamily::HSet(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// HSET key field value [field value ...]
 	if (args.size() < 4 || (args.size() % 2) != 0) {
 		return RESPParser::make_error("wrong number of arguments for HSET");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* hash_obj = db->Find(key);
 
 	if (hash_obj == nullptr || !hash_obj->isHash()) {
@@ -36,7 +36,7 @@ std::string HashFamily::HSet(const std::vector<CompactObj>& args, CommandContext
 			db->Del(key);
 		}
 		auto hash_table = new HashType();
-		CompactObj new_hash = CompactObj::fromHash();
+		NanoObj new_hash = NanoObj::fromHash();
 		new_hash.setObj(hash_table);
 		db->Set(key, std::move(new_hash));
 		hash_obj = db->Find(key);
@@ -53,14 +53,14 @@ std::string HashFamily::HSet(const std::vector<CompactObj>& args, CommandContext
 	return RESPParser::ok_response();
 }
 
-std::string HashFamily::HGet(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string HashFamily::HGet(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// HGET key field
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for HGET");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* hash_obj = db->Find(key);
 
 	if (hash_obj == nullptr || !hash_obj->isHash()) {
@@ -78,14 +78,14 @@ std::string HashFamily::HGet(const std::vector<CompactObj>& args, CommandContext
 	return RESPParser::make_bulk_string(it->second);
 }
 
-std::string HashFamily::HMSet(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string HashFamily::HMSet(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// HMSET key field value [field value ...] (deprecated alias)
 	if (args.size() < 4 || (args.size() % 2) != 0) {
 		return RESPParser::make_error("wrong number of arguments for HMSET");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* hash_obj = db->Find(key);
 
 	if (hash_obj == nullptr || !hash_obj->isHash()) {
@@ -93,7 +93,7 @@ std::string HashFamily::HMSet(const std::vector<CompactObj>& args, CommandContex
 			db->Del(key);
 		}
 		auto hash_table = new HashType();
-		CompactObj new_hash = CompactObj::fromHash();
+		NanoObj new_hash = NanoObj::fromHash();
 		new_hash.setObj(hash_table);
 		db->Set(key, std::move(new_hash));
 		hash_obj = db->Find(key);
@@ -110,14 +110,14 @@ std::string HashFamily::HMSet(const std::vector<CompactObj>& args, CommandContex
 	return RESPParser::ok_response();
 }
 
-std::string HashFamily::HMGet(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string HashFamily::HMGet(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// HMGET key field [field ...]
 	if (args.size() < 3) {
 		return RESPParser::make_error("wrong number of arguments for HMGET");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* hash_obj = db->Find(key);
 
 	if (hash_obj == nullptr || !hash_obj->isHash()) {
@@ -144,14 +144,14 @@ std::string HashFamily::HMGet(const std::vector<CompactObj>& args, CommandContex
 	return result;
 }
 
-std::string HashFamily::HDel(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string HashFamily::HDel(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// HDEL key field [field ...]
 	if (args.size() < 3) {
 		return RESPParser::make_error("wrong number of arguments for HDEL");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* hash_obj = db->Find(key);
 
 	if (hash_obj == nullptr || !hash_obj->isHash()) {
@@ -171,14 +171,14 @@ std::string HashFamily::HDel(const std::vector<CompactObj>& args, CommandContext
 	return RESPParser::make_integer(deleted);
 }
 
-std::string HashFamily::HExists(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string HashFamily::HExists(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// HEXISTS key field
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for HEXISTS");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* hash_obj = db->Find(key);
 
 	if (hash_obj == nullptr || !hash_obj->isHash()) {
@@ -191,14 +191,14 @@ std::string HashFamily::HExists(const std::vector<CompactObj>& args, CommandCont
 	return RESPParser::make_integer(hash_table->count(field) ? 1 : 0);
 }
 
-std::string HashFamily::HLen(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string HashFamily::HLen(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// HLEN key
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for HLEN");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* hash_obj = db->Find(key);
 
 	if (hash_obj == nullptr || !hash_obj->isHash()) {
@@ -209,14 +209,14 @@ std::string HashFamily::HLen(const std::vector<CompactObj>& args, CommandContext
 	return RESPParser::make_integer(static_cast<int64_t>(hash_table->size()));
 }
 
-std::string HashFamily::HKeys(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string HashFamily::HKeys(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// HKEYS key
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for HKEYS");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* hash_obj = db->Find(key);
 
 	if (hash_obj == nullptr || !hash_obj->isHash()) {
@@ -233,14 +233,14 @@ std::string HashFamily::HKeys(const std::vector<CompactObj>& args, CommandContex
 	return result;
 }
 
-std::string HashFamily::HVals(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string HashFamily::HVals(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// HVALS key
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for HVALS");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* hash_obj = db->Find(key);
 
 	if (hash_obj == nullptr || !hash_obj->isHash()) {
@@ -257,14 +257,14 @@ std::string HashFamily::HVals(const std::vector<CompactObj>& args, CommandContex
 	return result;
 }
 
-std::string HashFamily::HGetAll(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string HashFamily::HGetAll(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// HGETALL key
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for HGETALL");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* hash_obj = db->Find(key);
 
 	if (hash_obj == nullptr || !hash_obj->isHash()) {
@@ -282,14 +282,14 @@ std::string HashFamily::HGetAll(const std::vector<CompactObj>& args, CommandCont
 	return result;
 }
 
-std::string HashFamily::HIncrBy(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string HashFamily::HIncrBy(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// HINCRBY key field increment
 	if (args.size() != 4) {
 		return RESPParser::make_error("wrong number of arguments for HINCRBY");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* hash_obj = db->Find(key);
 
 	if (hash_obj == nullptr || !hash_obj->isHash()) {
@@ -323,14 +323,14 @@ std::string HashFamily::HIncrBy(const std::vector<CompactObj>& args, CommandCont
 	return RESPParser::make_bulk_string(std::to_string(current));
 }
 
-std::string HashFamily::HScan(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string HashFamily::HScan(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// HSCAN key cursor [MATCH ...] [COUNT ...] (simplified)
 	if (args.size() < 3) {
 		return RESPParser::make_error("wrong number of arguments for HSCAN");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* hash_obj = db->Find(key);
 
 	if (hash_obj == nullptr || !hash_obj->isHash()) {
@@ -370,14 +370,14 @@ std::string HashFamily::HScan(const std::vector<CompactObj>& args, CommandContex
 	return result;
 }
 
-std::string HashFamily::HStrLen(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string HashFamily::HStrLen(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// HSTRLEN key field
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for HSTRLEN");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* hash_obj = db->Find(key);
 
 	if (hash_obj == nullptr || !hash_obj->isHash()) {
@@ -395,14 +395,14 @@ std::string HashFamily::HStrLen(const std::vector<CompactObj>& args, CommandCont
 	return RESPParser::make_integer(static_cast<int64_t>(it->second.length()));
 }
 
-std::string HashFamily::HRandField(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string HashFamily::HRandField(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// HRANDFIELD key [count]
 	if (args.size() < 2 || args.size() > 3) {
 		return RESPParser::make_error("wrong number of arguments for HRANDFIELD");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* hash_obj = db->Find(key);
 
 	if (hash_obj == nullptr || !hash_obj->isHash()) {

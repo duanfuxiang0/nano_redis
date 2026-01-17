@@ -115,8 +115,8 @@
 
 #endif
 
-// Forward declaration and include CompactObj for hash specialization
-#include "core/compact_obj.h"
+// Forward declaration and include NanoObj for hash specialization
+#include "core/nano_obj.h"
 
 namespace ankerl::unordered_dense {
 inline namespace ANKERL_UNORDERED_DENSE_NAMESPACE {
@@ -425,11 +425,11 @@ ANKERL_UNORDERED_DENSE_HASH_STATICCAST(unsigned long long);
 #pragma GCC diagnostic pop
 #endif
 
-// CompactObj hash specialization
+// NanoObj hash specialization
 template <>
-struct hash<CompactObj> {
+struct hash<NanoObj> {
 	using is_avalanching = void;
-	auto operator()(CompactObj const& obj) const noexcept -> std::uint64_t {
+	auto operator()(NanoObj const& obj) const noexcept -> std::uint64_t {
 		uint8_t tag = obj.getTag();
 
 		if (tag <= 14) {

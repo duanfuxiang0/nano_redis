@@ -102,7 +102,7 @@ std::string RESPParser::read_bulk_string(int64_t len) {
     return result;
 }
 
-int RESPParser::parse_inline_command(const std::string& line, std::vector<CompactObj>& args) {
+int RESPParser::parse_inline_command(const std::string& line, std::vector<NanoObj>& args) {
     const char* p = line.data();
     const char* end = p + line.size();
 
@@ -118,14 +118,14 @@ int RESPParser::parse_inline_command(const std::string& line, std::vector<Compac
             ++p;
         }
         if (p > token_start) {
-            args.push_back(CompactObj::fromKey(std::string_view(token_start, p - token_start)));
+            args.push_back(NanoObj::fromKey(std::string_view(token_start, p - token_start)));
         }
     }
 
     return args.size() > 0 ? 0 : -1;
 }
 
-int RESPParser::parse_array(std::vector<CompactObj>& args) {
+int RESPParser::parse_array(std::vector<NanoObj>& args) {
     std::string line = read_line();
     if (line.empty()) {
         return -1;
@@ -152,13 +152,13 @@ int RESPParser::parse_array(std::vector<CompactObj>& args) {
                 return -1;
             }
             std::string bulk = read_bulk_string(len);
-            args.push_back(CompactObj::fromKey(bulk));
+            args.push_back(NanoObj::fromKey(bulk));
         } else if (c == '+') {
-            args.push_back(CompactObj::fromKey(read_line()));
+            args.push_back(NanoObj::fromKey(read_line()));
         } else if (c == ':') {
-            args.push_back(CompactObj::fromKey(read_line()));
+            args.push_back(NanoObj::fromKey(read_line()));
         } else if (c == '-') {
-            args.push_back(CompactObj::fromKey(read_line()));
+            args.push_back(NanoObj::fromKey(read_line()));
         } else {
             return -1;
         }
@@ -176,11 +176,11 @@ int RESPParser::parse_value(ParsedValue& value) {
     switch (c) {
         case '+':
             value.type = DataType::SimpleString;
-            value.obj_value = CompactObj::fromKey(read_line());
+            value.obj_value = NanoObj::fromKey(read_line());
             return 0;
         case '-':
             value.type = DataType::Error;
-            value.obj_value = CompactObj::fromKey(read_line());
+            value.obj_value = NanoObj::fromKey(read_line());
             return 0;
         case ':': {
             value.type = DataType::Integer;
@@ -189,7 +189,7 @@ int RESPParser::parse_value(ParsedValue& value) {
             if (!string2ll(line.data(), line.size(), &int_val)) {
                 return -1;
             }
-            value.obj_value = CompactObj::fromInt(int_val);
+            value.obj_value = NanoObj::fromInt(int_val);
             return 0;
         }
         case '$': {
@@ -200,9 +200,9 @@ int RESPParser::parse_value(ParsedValue& value) {
             }
             value.type = DataType::BulkString;
             if (len >= 0) {
-                value.obj_value = CompactObj::fromKey(read_bulk_string(len));
+                value.obj_value = NanoObj::fromKey(read_bulk_string(len));
             } else {
-                value.obj_value = CompactObj();
+                value.obj_value = NanoObj();
             }
             return 0;
         }
@@ -211,7 +211,7 @@ int RESPParser::parse_value(ParsedValue& value) {
     }
 }
 
-int RESPParser::parse_command(std::vector<CompactObj>& args) {
+int RESPParser::parse_command(std::vector<NanoObj>& args) {
     args.clear();
 
     char c = read_char();

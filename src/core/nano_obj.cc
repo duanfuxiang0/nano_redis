@@ -1,4 +1,4 @@
-#include "core/compact_obj.h"
+#include "core/nano_obj.h"
 #include "core/util.h"
 #include <cstdlib>
 #include <cstring>
@@ -8,19 +8,19 @@
 // Tag & Flag Accessors
 // ============================================================================
 
-uint8_t CompactObj::getTag() const {
+uint8_t NanoObj::getTag() const {
     return taglen_;
 }
 
-uint8_t CompactObj::getFlag() const {
+uint8_t NanoObj::getFlag() const {
     return flag_;
 }
 
-void CompactObj::setTag(uint8_t tag) {
+void NanoObj::setTag(uint8_t tag) {
     taglen_ = tag;
 }
 
-void CompactObj::setFlag(uint8_t flag) {
+void NanoObj::setFlag(uint8_t flag) {
     flag_ = flag;
 }
 
@@ -28,24 +28,24 @@ void CompactObj::setFlag(uint8_t flag) {
 // Constructors & Destructor
 // ============================================================================
 
-CompactObj::CompactObj() {
+NanoObj::NanoObj() {
     setTag(NULL_TAG);
     setFlag(0);
 }
 
-CompactObj::CompactObj(std::string_view str) {
+NanoObj::NanoObj(std::string_view str) {
     setTag(NULL_TAG);
     setFlag(0);
     setString(str);
 }
 
-CompactObj::CompactObj(int64_t val) {
+NanoObj::NanoObj(int64_t val) {
     setTag(NULL_TAG);
     setFlag(0);
     setInt(val);
 }
 
-CompactObj::CompactObj(const CompactObj& other) {
+NanoObj::NanoObj(const NanoObj& other) {
     taglen_ = other.taglen_;
     flag_ = other.flag_;
 
@@ -64,7 +64,7 @@ CompactObj::CompactObj(const CompactObj& other) {
     }
 }
 
-CompactObj::CompactObj(CompactObj&& other) noexcept {
+NanoObj::NanoObj(NanoObj&& other) noexcept {
     taglen_ = other.taglen_;
     flag_ = other.flag_;
     u_ = other.u_;
@@ -73,7 +73,7 @@ CompactObj::CompactObj(CompactObj&& other) noexcept {
     other.setFlag(0);
 }
 
-CompactObj::~CompactObj() {
+NanoObj::~NanoObj() {
     clear();
 }
 
@@ -81,7 +81,7 @@ CompactObj::~CompactObj() {
 // Move Assignment Operator
 // ============================================================================
 
-CompactObj& CompactObj::operator=(CompactObj&& other) noexcept {
+NanoObj& NanoObj::operator=(NanoObj&& other) noexcept {
     if (this != &other) {
         clear();
 
@@ -95,7 +95,7 @@ CompactObj& CompactObj::operator=(CompactObj&& other) noexcept {
     return *this;
 }
 
-CompactObj& CompactObj::operator=(const CompactObj& other) {
+NanoObj& NanoObj::operator=(const NanoObj& other) {
     if (this != &other) {
         clear();
 
@@ -123,43 +123,43 @@ CompactObj& CompactObj::operator=(const CompactObj& other) {
 // Static Factory Methods
 // ============================================================================
 
-CompactObj CompactObj::fromString(std::string_view str) {
-    return CompactObj(str);
+NanoObj NanoObj::fromString(std::string_view str) {
+    return NanoObj(str);
 }
 
-CompactObj CompactObj::fromInt(int64_t val) {
-    return CompactObj(val);
+NanoObj NanoObj::fromInt(int64_t val) {
+    return NanoObj(val);
 }
 
 // ============================================================================
 // Type Query Methods
 // ============================================================================
 
-bool CompactObj::isNull() const {
+bool NanoObj::isNull() const {
     return getTag() == NULL_TAG;
 }
 
-bool CompactObj::isInt() const {
+bool NanoObj::isInt() const {
     return getTag() == INT_TAG;
 }
 
-bool CompactObj::isString() const {
+bool NanoObj::isString() const {
     return (getTag() <= kInlineLen) || getTag() == SMALL_STR_TAG;
 }
 
-bool CompactObj::isHash() const {
+bool NanoObj::isHash() const {
     return u_.robj.type_ == OBJ_HASH;
 }
 
-bool CompactObj::isSet() const {
+bool NanoObj::isSet() const {
     return u_.robj.type_ == OBJ_SET;
 }
 
-bool CompactObj::isList() const {
+bool NanoObj::isList() const {
     return u_.robj.type_ == OBJ_LIST;
 }
 
-bool CompactObj::isZset() const {
+bool NanoObj::isZset() const {
     return u_.robj.type_ == OBJ_ZSET;
 }
 
@@ -167,21 +167,21 @@ bool CompactObj::isZset() const {
 // Value Conversion Methods
 // ============================================================================
 
-std::optional<std::string_view> CompactObj::tryToString() const {
+std::optional<std::string_view> NanoObj::tryToString() const {
     if (getTag() <= kInlineLen) {
         return std::string_view(reinterpret_cast<const char*>(u_.data), getTag());
     }
     return std::nullopt;
 }
 
-std::optional<int64_t> CompactObj::tryToInt() const {
+std::optional<int64_t> NanoObj::tryToInt() const {
     if (getTag() == INT_TAG) {
         return u_.ival;
     }
     return std::nullopt;
 }
 
-std::string CompactObj::toString() const {
+std::string NanoObj::toString() const {
     auto sv = tryToString();
     if (sv) {
         return std::string(*sv);
@@ -195,7 +195,7 @@ std::string CompactObj::toString() const {
     return "";
 }
 
-int64_t CompactObj::asInt() const {
+int64_t NanoObj::asInt() const {
     if (getTag() == INT_TAG) {
         return u_.ival;
     }
@@ -206,7 +206,7 @@ int64_t CompactObj::asInt() const {
 // Property Access Methods
 // ============================================================================
 
-uint8_t CompactObj::getType() const {
+uint8_t NanoObj::getType() const {
     if (getTag() == INT_TAG || getTag() <= kInlineLen || getTag() == SMALL_STR_TAG) {
         return OBJ_STRING;
     }
@@ -216,7 +216,7 @@ uint8_t CompactObj::getType() const {
     return OBJ_STRING;
 }
 
-uint8_t CompactObj::getEncoding() const {
+uint8_t NanoObj::getEncoding() const {
     if (getTag() == NULL_TAG) {
         return OBJ_ENCODING_RAW;
     }
@@ -235,7 +235,7 @@ uint8_t CompactObj::getEncoding() const {
     return OBJ_ENCODING_RAW;
 }
 
-size_t CompactObj::size() const {
+size_t NanoObj::size() const {
     if (getTag() <= kInlineLen) {
         return getTag();
     }
@@ -255,7 +255,7 @@ size_t CompactObj::size() const {
 // Internal Setters
 // ============================================================================
 
-void CompactObj::clear() {
+void NanoObj::clear() {
     if (getTag() == SMALL_STR_TAG) {
         freeSmallString();
     } else if (getTag() == ROBJ_TAG) {
@@ -265,7 +265,7 @@ void CompactObj::clear() {
     }
 }
 
-void CompactObj::setString(std::string_view str) {
+void NanoObj::setString(std::string_view str) {
     if (str.size() <= kInlineLen) {
         setInlineString(str);
     } else {
@@ -273,21 +273,21 @@ void CompactObj::setString(std::string_view str) {
     }
 }
 
-void CompactObj::setInt(int64_t val) {
+void NanoObj::setInt(int64_t val) {
     clear();
     u_.ival = val;
     setTag(INT_TAG);
     setFlag(0);
 }
 
-void CompactObj::setInlineString(std::string_view str) {
+void NanoObj::setInlineString(std::string_view str) {
     clear();
     std::memcpy(u_.data, str.data(), str.size());
     setTag(static_cast<uint8_t>(str.size()));
     setFlag(0);
 }
 
-void CompactObj::setSmallString(std::string_view str) {
+void NanoObj::setSmallString(std::string_view str) {
     clear();
     u_.small_str.length = static_cast<uint16_t>(str.size());
     setTag(SMALL_STR_TAG);
@@ -300,7 +300,7 @@ void CompactObj::setSmallString(std::string_view str) {
     std::memcpy(u_.small_str.ptr, str.data(), str.size());
 }
 
-void CompactObj::freeSmallString() {
+void NanoObj::freeSmallString() {
     if (u_.small_str.ptr != nullptr) {
         ::operator delete(u_.small_str.ptr);
         u_.small_str.ptr = nullptr;
@@ -311,13 +311,13 @@ void CompactObj::freeSmallString() {
 // Key-specific Methods
 // ============================================================================
 
-CompactObj CompactObj::fromKey(std::string_view key) {
-    CompactObj obj;
+NanoObj NanoObj::fromKey(std::string_view key) {
+    NanoObj obj;
     obj.setStringKey(key);
     return obj;
 }
 
-void CompactObj::setStringKey(std::string_view str) {
+void NanoObj::setStringKey(std::string_view str) {
     if (str.size() <= 20) {
         int64_t ival;
         if (string2ll(str.data(), str.size(), &ival)) {
@@ -328,7 +328,7 @@ void CompactObj::setStringKey(std::string_view str) {
     setString(str);
 }
 
-std::string_view CompactObj::getRawStringView() const {
+std::string_view NanoObj::getRawStringView() const {
     if (getTag() <= kInlineLen) {
         return std::string_view(reinterpret_cast<const char*>(u_.data), getTag());
     }
@@ -338,7 +338,7 @@ std::string_view CompactObj::getRawStringView() const {
     return std::string_view();
 }
 
-bool CompactObj::operator==(const CompactObj& other) const {
+bool NanoObj::operator==(const NanoObj& other) const {
     uint8_t this_tag = getTag();
     uint8_t other_tag = other.getTag();
 
@@ -368,7 +368,7 @@ bool CompactObj::operator==(const CompactObj& other) const {
     return false;
 }
 
-bool CompactObj::operator!=(const CompactObj& other) const {
+bool NanoObj::operator!=(const NanoObj& other) const {
     return !(*this == other);
 }
 
@@ -376,7 +376,7 @@ bool CompactObj::operator!=(const CompactObj& other) const {
 // Comparison Helpers
 // ============================================================================
 
-std::string_view CompactObj::getStringView() const {
+std::string_view NanoObj::getStringView() const {
     if (getTag() <= kInlineLen) {
         return std::string_view(reinterpret_cast<const char*>(u_.data), getTag());
     }
@@ -386,7 +386,7 @@ std::string_view CompactObj::getStringView() const {
     return std::string_view();
 }
 
-int64_t CompactObj::getIntValue() const {
+int64_t NanoObj::getIntValue() const {
     if (getTag() == INT_TAG) {
         return u_.ival;
     }
@@ -397,26 +397,26 @@ int64_t CompactObj::getIntValue() const {
 // Factory Methods for Different Types
 // ============================================================================
 
-CompactObj CompactObj::fromHash() {
-    CompactObj obj;
+NanoObj NanoObj::fromHash() {
+    NanoObj obj;
     obj.setHash();
     return obj;
 }
 
-CompactObj CompactObj::fromSet() {
-    CompactObj obj;
+NanoObj NanoObj::fromSet() {
+    NanoObj obj;
     obj.setSet();
     return obj;
 }
 
-CompactObj CompactObj::fromList() {
-    CompactObj obj;
+NanoObj NanoObj::fromList() {
+    NanoObj obj;
     obj.setList();
     return obj;
 }
 
-CompactObj CompactObj::fromZset() {
-    CompactObj obj;
+NanoObj NanoObj::fromZset() {
+    NanoObj obj;
     obj.setZset();
     return obj;
 }
@@ -425,7 +425,7 @@ CompactObj CompactObj::fromZset() {
 // Type Setters for Different Types
 // ============================================================================
 
-void CompactObj::setHash() {
+void NanoObj::setHash() {
     clear();
     u_.robj.type_ = OBJ_HASH;
     u_.robj.encoding_ = OBJ_ENCODING_HASHTABLE;
@@ -435,7 +435,7 @@ void CompactObj::setHash() {
     setFlag(0);
 }
 
-void CompactObj::setSet() {
+void NanoObj::setSet() {
     clear();
     u_.robj.type_ = OBJ_SET;
     u_.robj.encoding_ = OBJ_ENCODING_HASHTABLE;
@@ -445,7 +445,7 @@ void CompactObj::setSet() {
     setFlag(0);
 }
 
-void CompactObj::setList() {
+void NanoObj::setList() {
     clear();
     u_.robj.type_ = OBJ_LIST;
     u_.robj.encoding_ = OBJ_ENCODING_RAW;
@@ -455,7 +455,7 @@ void CompactObj::setList() {
     setFlag(0);
 }
 
-void CompactObj::setZset() {
+void NanoObj::setZset() {
     clear();
     u_.robj.type_ = OBJ_ZSET;
     u_.robj.encoding_ = OBJ_ENCODING_SKIPLIST;

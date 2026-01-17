@@ -1,6 +1,6 @@
 #include "command/command_registry.h"
 #include "core/command_context.h"
-#include "core/compact_obj.h"
+#include "core/nano_obj.h"
 #include <absl/container/flat_hash_map.h>
 #include <string>
 #include <vector>
@@ -18,12 +18,12 @@ void CommandRegistry::register_command_with_context(const std::string& name, Com
 	handlers_with_context_[name] = handler;
 }
 
-std::string CommandRegistry::execute(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string CommandRegistry::execute(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	if (args.empty()) {
 		return "-ERR Empty command\r\n";
 	}
 
-	const CompactObj& cmd_obj = args[0];
+	const NanoObj& cmd_obj = args[0];
 	absl::string_view cmd_sv = cmd_obj.getStringView();
 	if (cmd_sv.empty()) {
 		// Fallback for non-string commands (should be rare).

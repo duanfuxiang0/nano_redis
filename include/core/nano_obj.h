@@ -41,7 +41,7 @@ struct SmallString {
 
 static_assert(sizeof(SmallString) == 14);
 
-class CompactObj {
+class NanoObj {
 public:
 	enum Tag : uint8_t {
 		// 0-14 is reserved for inline lengths of string type.
@@ -54,22 +54,22 @@ public:
 		NULL_TAG = 31,
 	};
 
-	CompactObj();
-	explicit CompactObj(std::string_view str);
-	explicit CompactObj(int64_t val);
-	~CompactObj();
+	NanoObj();
+	explicit NanoObj(std::string_view str);
+	explicit NanoObj(int64_t val);
+	~NanoObj();
 
-	CompactObj(const CompactObj& other);
-	CompactObj& operator=(const CompactObj& other);
-	CompactObj(CompactObj&& other) noexcept;
-	CompactObj& operator=(CompactObj&& other) noexcept;
+	NanoObj(const NanoObj& other);
+	NanoObj& operator=(const NanoObj& other);
+	NanoObj(NanoObj&& other) noexcept;
+	NanoObj& operator=(NanoObj&& other) noexcept;
 
-	static CompactObj fromString(std::string_view str);
-	static CompactObj fromInt(int64_t val);
-	static CompactObj fromKey(std::string_view key);
+	static NanoObj fromString(std::string_view str);
+	static NanoObj fromInt(int64_t val);
+	static NanoObj fromKey(std::string_view key);
 
-	bool operator==(const CompactObj& other) const;
-	bool operator!=(const CompactObj& other) const;
+	bool operator==(const NanoObj& other) const;
+	bool operator!=(const NanoObj& other) const;
 
 	bool isNull() const;
 	bool isInt() const;
@@ -113,10 +113,10 @@ public:
 		u_.robj.inner_obj_ = obj;
 	}
 
-	static CompactObj fromHash();
-	static CompactObj fromSet();
-	static CompactObj fromList();
-	static CompactObj fromZset();
+	static NanoObj fromHash();
+	static NanoObj fromSet();
+	static NanoObj fromList();
+	static NanoObj fromZset();
 
 	void setHash();
 	void setSet();
@@ -146,4 +146,4 @@ private:
 	static_assert(sizeof(u_) == 14);
 } __attribute__((packed));
 
-static_assert(sizeof(CompactObj) == 16);
+static_assert(sizeof(NanoObj) == 16);

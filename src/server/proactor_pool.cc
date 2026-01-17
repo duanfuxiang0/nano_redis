@@ -175,7 +175,7 @@ int ProactorPool::HandleConnection(photon::net::ISocketStream* stream) {
 
 	RESPParser parser(stream);
 
-	std::vector<CompactObj> args;
+	std::vector<NanoObj> args;
 	args.reserve(8);
 
 	while (running_) {
@@ -209,7 +209,7 @@ int ProactorPool::HandleConnection(photon::net::ISocketStream* stream) {
 					local_shard->GetDB().CurrentDB());
 				response = CommandRegistry::instance().execute(args, &ctx);
 			} else {
-				std::vector<CompactObj> forwarded_args;
+				std::vector<NanoObj> forwarded_args;
 				forwarded_args.swap(args);
 				response = shard_set_->Await(target_shard, [this, forwarded_args = std::move(forwarded_args), target_shard]() mutable {
 					EngineShard* target = shard_set_->GetShard(target_shard);

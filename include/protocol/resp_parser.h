@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include <photon/net/socket.h>
-#include "core/compact_obj.h"
+#include "core/nano_obj.h"
 
 class RESPParser {
 public:
@@ -11,7 +11,7 @@ public:
 
 	struct ParsedValue {
 		DataType type;
-		CompactObj obj_value;
+		NanoObj obj_value;
 		std::vector<ParsedValue> array_value;
 
 		ParsedValue() : type(DataType::SimpleString), obj_value() {
@@ -21,7 +21,7 @@ public:
 	RESPParser(photon::net::ISocketStream* stream) : stream_(stream) {
 	}
 
-	int parse_command(std::vector<CompactObj>& args);
+	int parse_command(std::vector<NanoObj>& args);
 
 	static const std::string& ok_response();
 	static const std::string& pong_response();
@@ -36,8 +36,8 @@ public:
 	static std::string make_array(int64_t count);
 
 private:
-	int parse_array(std::vector<CompactObj>& args);
-	int parse_inline_command(const std::string& line, std::vector<CompactObj>& args);
+	int parse_array(std::vector<NanoObj>& args);
+	int parse_inline_command(const std::string& line, std::vector<NanoObj>& args);
 	int parse_value(ParsedValue& value);
 
 	char read_char();

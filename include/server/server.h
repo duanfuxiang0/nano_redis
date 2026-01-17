@@ -8,7 +8,7 @@
 
 #include "core/database.h"
 #include "core/command_context.h"
-#include "core/compact_obj.h"
+#include "core/nano_obj.h"
 #include "command/string_family.h"
 #include "command/hash_family.h"
 #include "command/set_family.h"
@@ -27,5 +27,5 @@ private:
 	Database store_;
 
 	int handle_client(photon::net::ISocketStream* stream);
-	std::string process_command(const std::vector<CompactObj>& args);
+	std::string process_command(const std::vector<NanoObj>& args);
 };

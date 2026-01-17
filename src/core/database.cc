@@ -2,37 +2,37 @@
 
 Database::Database() : current_db_(0) {
 	for (size_t i = 0; i < kNumDBs; ++i) {
-		tables_[i] = std::make_unique<DashTable<CompactObj, CompactObj>>();
+		tables_[i] = std::make_unique<DashTable<NanoObj, NanoObj>>();
 	}
 }
 
-bool Database::Set(const CompactObj& key, const std::string& value) {
-	return Set(key, std::move(CompactObj::fromKey(value)));
+bool Database::Set(const NanoObj& key, const std::string& value) {
+	return Set(key, std::move(NanoObj::fromKey(value)));
 }
 
-std::optional<std::string> Database::Get(const CompactObj& key) const {
-	const CompactObj* val = tables_[current_db_]->Find(key);
+std::optional<std::string> Database::Get(const NanoObj& key) const {
+	const NanoObj* val = tables_[current_db_]->Find(key);
 	if (val) {
 		return val->toString();
 	}
 	return std::nullopt;
 }
 
- bool Database::Set(const CompactObj& key, CompactObj&& value) {
+ bool Database::Set(const NanoObj& key, NanoObj&& value) {
 	tables_[current_db_]->Insert(key, std::move(value));
 	return true;
 }
 
- bool Database::Set(const CompactObj& key, const CompactObj& value) {
+ bool Database::Set(const NanoObj& key, const NanoObj& value) {
 	tables_[current_db_]->Insert(key, value);
 	return true;
 }
 
-bool Database::Del(const CompactObj& key) {
+bool Database::Del(const NanoObj& key) {
 	return tables_[current_db_]->Erase(key);
 }
 
-bool Database::Exists(const CompactObj& key) {
+bool Database::Exists(const NanoObj& key) {
 	return tables_[current_db_]->Find(key) != nullptr;
 }
 
@@ -60,13 +60,13 @@ void Database::ClearAll() {
 
 std::vector<std::string> Database::Keys() const {
 	std::vector<std::string> keys;
-	tables_[current_db_]->ForEach([&keys](const CompactObj& key, const CompactObj& value) {
+	tables_[current_db_]->ForEach([&keys](const NanoObj& key, const NanoObj& value) {
 		(void)value;
 		keys.push_back(key.toString());
 	});
 	return keys;
 }
 
-const CompactObj* Database::Find(const CompactObj& key) const {
+const NanoObj* Database::Find(const NanoObj& key) const {
 	return tables_[current_db_]->Find(key);
 }

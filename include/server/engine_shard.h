@@ -5,7 +5,7 @@
 #include <string>
 
 #include "core/database.h"
-#include "core/compact_obj.h"
+#include "core/nano_obj.h"
 #include "core/task_queue.h"
 #include "core/command_context.h"
 

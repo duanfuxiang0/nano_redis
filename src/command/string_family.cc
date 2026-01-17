@@ -2,7 +2,7 @@
 #include "server/connection.h"
 #include "core/database.h"
 #include "core/command_context.h"
-#include "core/compact_obj.h"
+#include "core/nano_obj.h"
 #include "server/sharding.h"
 #include "server/engine_shard.h"
 #include "server/engine_shard_set.h"
@@ -14,52 +14,52 @@
 #include <optional>
 
 void StringFamily::Register(CommandRegistry* registry) {
-	registry->register_command_with_context("SET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Set(args, ctx); });
-	registry->register_command_with_context("GET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Get(args, ctx); });
-	registry->register_command_with_context("DEL", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Del(args, ctx); });
-	registry->register_command_with_context("EXISTS", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Exists(args, ctx); });
-	registry->register_command_with_context("MSET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return MSet(args, ctx); });
-	registry->register_command_with_context("MGET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return MGet(args, ctx); });
-	registry->register_command_with_context("INCR", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Incr(args, ctx); });
-	registry->register_command_with_context("DECR", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Decr(args, ctx); });
-	registry->register_command_with_context("INCRBY", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return IncrBy(args, ctx); });
-	registry->register_command_with_context("DECRBY", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return DecrBy(args, ctx); });
-	registry->register_command_with_context("APPEND", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Append(args, ctx); });
-	registry->register_command_with_context("STRLEN", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return StrLen(args, ctx); });
-	registry->register_command_with_context("GETRANGE", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return GetRange(args, ctx); });
-	registry->register_command_with_context("SETRANGE", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SetRange(args, ctx); });
-	registry->register_command_with_context("SELECT", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Select(args, ctx); });
-	registry->register_command_with_context("KEYS", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return Keys(args, ctx); });
-	registry->register_command_with_context("FLUSHDB", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return FlushDB(args, ctx); });
-	registry->register_command_with_context("DBSIZE", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return DBSize(args, ctx); });
+	registry->register_command_with_context("SET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Set(args, ctx); });
+	registry->register_command_with_context("GET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Get(args, ctx); });
+	registry->register_command_with_context("DEL", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Del(args, ctx); });
+	registry->register_command_with_context("EXISTS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Exists(args, ctx); });
+	registry->register_command_with_context("MSET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return MSet(args, ctx); });
+	registry->register_command_with_context("MGET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return MGet(args, ctx); });
+	registry->register_command_with_context("INCR", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Incr(args, ctx); });
+	registry->register_command_with_context("DECR", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Decr(args, ctx); });
+	registry->register_command_with_context("INCRBY", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return IncrBy(args, ctx); });
+	registry->register_command_with_context("DECRBY", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return DecrBy(args, ctx); });
+	registry->register_command_with_context("APPEND", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Append(args, ctx); });
+	registry->register_command_with_context("STRLEN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return StrLen(args, ctx); });
+	registry->register_command_with_context("GETRANGE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return GetRange(args, ctx); });
+	registry->register_command_with_context("SETRANGE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SetRange(args, ctx); });
+	registry->register_command_with_context("SELECT", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Select(args, ctx); });
+	registry->register_command_with_context("KEYS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Keys(args, ctx); });
+	registry->register_command_with_context("FLUSHDB", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return FlushDB(args, ctx); });
+	registry->register_command_with_context("DBSIZE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return DBSize(args, ctx); });
 	registry->register_command_with_context(
-	    "PING", [](const std::vector<CompactObj>&, CommandContext*) { return RESPParser::pong_response(); });
+	    "PING", [](const std::vector<NanoObj>&, CommandContext*) { return RESPParser::pong_response(); });
 	registry->register_command_with_context(
-	    "QUIT", [](const std::vector<CompactObj>&, CommandContext*) { return RESPParser::ok_response(); });
+	    "QUIT", [](const std::vector<NanoObj>&, CommandContext*) { return RESPParser::ok_response(); });
 	registry->register_command_with_context(
-	    "HELLO", [](const std::vector<CompactObj>& args, CommandContext*) { return Hello(args); });
+	    "HELLO", [](const std::vector<NanoObj>& args, CommandContext*) { return Hello(args); });
 	registry->register_command_with_context(
-	    "COMMAND", [](const std::vector<CompactObj>&, CommandContext*) {
+	    "COMMAND", [](const std::vector<NanoObj>&, CommandContext*) {
 	        // Return empty array for COMMAND (used by redis-cli for command discovery)
 	        return RESPParser::empty_array_response();
 	    });
 }
 
-std::string StringFamily::Set(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::Set(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	auto* db = ctx->GetDB();
 
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for 'SET'");
 	}
 
-	const CompactObj& key = args[1];
-	const CompactObj& value = args[2];
+	const NanoObj& key = args[1];
+	const NanoObj& value = args[2];
 
-	db->Set(key, CompactObj(value));
+	db->Set(key, NanoObj(value));
 	return RESPParser::ok_response();
 }
 
-std::string StringFamily::Get(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::Get(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	auto* db = ctx->GetDB();
 
 	if (args.size() != 2) {
@@ -74,7 +74,7 @@ std::string StringFamily::Get(const std::vector<CompactObj>& args, CommandContex
 	}
 }
 
-std::string StringFamily::Del(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::Del(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for 'DEL'");
 	}
@@ -115,7 +115,7 @@ std::string StringFamily::Del(const std::vector<CompactObj>& args, CommandContex
 			db.Select(db_index);
 			int local_deleted = 0;
 			for (const auto& k : keys) {
-				if (db.Del(CompactObj::fromKey(k.key))) {
+				if (db.Del(NanoObj::fromKey(k.key))) {
 					++local_deleted;
 				}
 			}
@@ -127,7 +127,7 @@ std::string StringFamily::Del(const std::vector<CompactObj>& args, CommandContex
 	return RESPParser::make_integer(count);
 }
 
-std::string StringFamily::Exists(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::Exists(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for 'EXISTS'");
 	}
@@ -167,7 +167,7 @@ std::string StringFamily::Exists(const std::vector<CompactObj>& args, CommandCon
 			db.Select(db_index);
 			int local_exists = 0;
 			for (const auto& k : keys) {
-				if (db.Exists(CompactObj::fromKey(k.key))) {
+				if (db.Exists(NanoObj::fromKey(k.key))) {
 					++local_exists;
 				}
 			}
@@ -179,7 +179,7 @@ std::string StringFamily::Exists(const std::vector<CompactObj>& args, CommandCon
 	return RESPParser::make_integer(count);
 }
 
-std::string StringFamily::MSet(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::MSet(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	if (args.size() < 3 || (args.size() - 1) % 2 != 0) {
 		return RESPParser::make_error("wrong number of arguments for 'MSET'");
 	}
@@ -189,7 +189,7 @@ std::string StringFamily::MSet(const std::vector<CompactObj>& args, CommandConte
 	if (ctx->IsSingleShard() || ctx->shard_set == nullptr) {
 		auto* db = ctx->GetDB();
 		for (size_t i = 1; i < args.size(); i += 2) {
-			db->Set(args[i], CompactObj(args[i + 1]));
+			db->Set(args[i], NanoObj(args[i + 1]));
 		}
 		return RESPParser::ok_response();
 	}
@@ -218,7 +218,7 @@ std::string StringFamily::MSet(const std::vector<CompactObj>& args, CommandConte
 			auto& db = shard->GetDB();
 			db.Select(db_index);
 			for (const auto& kv : pairs) {
-				db.Set(CompactObj::fromKey(kv.key), CompactObj::fromKey(kv.value));
+				db.Set(NanoObj::fromKey(kv.key), NanoObj::fromKey(kv.value));
 			}
 		});
 	}
@@ -226,7 +226,7 @@ std::string StringFamily::MSet(const std::vector<CompactObj>& args, CommandConte
 	return RESPParser::ok_response();
 }
 
-std::string StringFamily::MGet(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::MGet(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for 'MGET'");
 	}
@@ -278,7 +278,7 @@ std::string StringFamily::MGet(const std::vector<CompactObj>& args, CommandConte
 			    auto& db = shard->GetDB();
 			    db.Select(db_index);
 			    for (const auto& req : reqs) {
-				    out.emplace_back(req.index, db.Get(CompactObj::fromKey(req.key)));
+				    out.emplace_back(req.index, db.Get(NanoObj::fromKey(req.key)));
 			    }
 			    return out;
 		    });
@@ -300,13 +300,13 @@ std::string StringFamily::MGet(const std::vector<CompactObj>& args, CommandConte
 	return result;
 }
 
-std::string StringFamily::Incr(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::Incr(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for 'INCR'");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 
 	int64_t new_value;
 	auto current = db->Get(key);
@@ -316,17 +316,17 @@ std::string StringFamily::Incr(const std::vector<CompactObj>& args, CommandConte
 		new_value = 1;
 	}
 
-	db->Set(key, CompactObj::fromInt(new_value));
+	db->Set(key, NanoObj::fromInt(new_value));
 	return RESPParser::make_integer(new_value);
 }
 
-std::string StringFamily::Decr(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::Decr(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for 'DECR'");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 
 	int64_t new_value;
 	auto current = db->Get(key);
@@ -336,18 +336,18 @@ std::string StringFamily::Decr(const std::vector<CompactObj>& args, CommandConte
 		new_value = -1;
 	}
 
-	db->Set(key, CompactObj::fromInt(new_value));
+	db->Set(key, NanoObj::fromInt(new_value));
 	return RESPParser::make_integer(new_value);
 }
 
-std::string StringFamily::IncrBy(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::IncrBy(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	auto* db = ctx->GetDB();
 
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for 'INCRBY'");
 	}
 
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	int64_t increment = ParseInt(args[2].toString());
 
 	int64_t new_value;
@@ -358,29 +358,29 @@ std::string StringFamily::IncrBy(const std::vector<CompactObj>& args, CommandCon
 		new_value = increment;
 	}
 
-	db->Set(key, CompactObj::fromInt(new_value));
+	db->Set(key, NanoObj::fromInt(new_value));
 	return RESPParser::make_integer(new_value);
 }
 
-std::string StringFamily::DecrBy(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::DecrBy(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for 'DECRBY'");
 	}
 
 	std::string neg_val = "-" + args[2].toString();
-	std::vector<CompactObj> incr_args = {args[0], args[1], CompactObj::fromKey(neg_val)};
+	std::vector<NanoObj> incr_args = {args[0], args[1], NanoObj::fromKey(neg_val)};
 	return IncrBy(incr_args, ctx);
 }
 
-std::string StringFamily::Append(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::Append(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	auto* db = ctx->GetDB();
 
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for 'APPEND'");
 	}
 
-	const CompactObj& key = args[1];
-	const CompactObj& value = args[2];
+	const NanoObj& key = args[1];
+	const NanoObj& value = args[2];
 
 	std::string new_value;
 	auto current = db->Get(key);
@@ -390,11 +390,11 @@ std::string StringFamily::Append(const std::vector<CompactObj>& args, CommandCon
 		new_value = value.toString();
 	}
 
-	db->Set(key, CompactObj::fromKey(new_value));
+	db->Set(key, NanoObj::fromKey(new_value));
 	return RESPParser::make_integer(new_value.length());
 }
 
-std::string StringFamily::StrLen(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::StrLen(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	auto* db = ctx->GetDB();
 
 	if (args.size() != 2) {
@@ -409,14 +409,14 @@ std::string StringFamily::StrLen(const std::vector<CompactObj>& args, CommandCon
 	}
 }
 
-std::string StringFamily::GetRange(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::GetRange(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	auto* db = ctx->GetDB();
 
 	if (args.size() != 4) {
 		return RESPParser::make_error("wrong number of arguments for 'GETRANGE'");
 	}
 
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	int start = ParseInt(args[2].toString());
 	int end = ParseInt(args[3].toString());
 
@@ -439,16 +439,16 @@ std::string StringFamily::GetRange(const std::vector<CompactObj>& args, CommandC
 	return RESPParser::make_bulk_string(result);
 }
 
-std::string StringFamily::SetRange(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::SetRange(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	auto* db = ctx->GetDB();
 
 	if (args.size() != 4) {
 		return RESPParser::make_error("wrong number of arguments for 'SETRANGE'");
 	}
 
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	int offset = ParseInt(args[2].toString());
-	const CompactObj& value = args[3];
+	const NanoObj& value = args[3];
 
 	std::string new_value;
 	auto current = db->Get(key);
@@ -467,11 +467,11 @@ std::string StringFamily::SetRange(const std::vector<CompactObj>& args, CommandC
 		new_value[offset + i] = value.toString()[i];
 	}
 
-	db->Set(key, CompactObj::fromKey(new_value));
+	db->Set(key, NanoObj::fromKey(new_value));
 	return RESPParser::make_integer(new_value.length());
 }
 
-std::string StringFamily::Select(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::Select(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	auto* db = ctx->GetDB();
 
 	if (args.size() != 2) {
@@ -508,7 +508,7 @@ std::string StringFamily::Select(const std::vector<CompactObj>& args, CommandCon
 	return RESPParser::ok_response();
 }
 
-std::string StringFamily::Keys(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::Keys(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	auto* db = ctx->GetDB();
 
 	std::vector<std::string> keys = db->Keys();
@@ -519,7 +519,7 @@ std::string StringFamily::Keys(const std::vector<CompactObj>& args, CommandConte
 	return response;
 }
 
-std::string StringFamily::FlushDB(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::FlushDB(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	if (!ctx->shard_set || ctx->IsSingleShard()) {
 		auto* db = ctx->GetDB();
 		db->ClearCurrentDB();
@@ -540,7 +540,7 @@ std::string StringFamily::FlushDB(const std::vector<CompactObj>& args, CommandCo
 	return RESPParser::ok_response();
 }
 
-std::string StringFamily::DBSize(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string StringFamily::DBSize(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	if (!ctx->shard_set || ctx->IsSingleShard()) {
 		auto* db = ctx->GetDB();
 		size_t count = db->KeyCount();
@@ -587,7 +587,7 @@ int StringFamily::AdjustIndex(int index, int length) {
 	return index;
 }
 
-std::string StringFamily::Hello(const std::vector<CompactObj>& args) {
+std::string StringFamily::Hello(const std::vector<NanoObj>& args) {
 	// HELLO [protover [AUTH username password] [SETNAME clientname]]
 	// Returns server information as a map (array of key-value pairs in RESP2)
 	int proto_ver = 2;  // Default to RESP2

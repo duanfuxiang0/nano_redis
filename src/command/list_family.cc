@@ -7,41 +7,41 @@
 #include <algorithm>
 
 void ListFamily::Register(CommandRegistry* registry) {
-	registry->register_command_with_context("LPUSH", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LPush(args, ctx); });
-	registry->register_command_with_context("RPUSH", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return RPush(args, ctx); });
-	registry->register_command_with_context("LPOP", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LPop(args, ctx); });
-	registry->register_command_with_context("RPOP", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return RPop(args, ctx); });
-	registry->register_command_with_context("LLEN", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LLen(args, ctx); });
-	registry->register_command_with_context("LINDEX", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LIndex(args, ctx); });
-	registry->register_command_with_context("LSET", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LSet(args, ctx); });
-	registry->register_command_with_context("LRANGE", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LRange(args, ctx); });
-	registry->register_command_with_context("LTRIM", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LTrim(args, ctx); });
-	registry->register_command_with_context("LREM", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LRem(args, ctx); });
-	registry->register_command_with_context("LINSERT", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return LInsert(args, ctx); });
+	registry->register_command_with_context("LPUSH", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LPush(args, ctx); });
+	registry->register_command_with_context("RPUSH", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return RPush(args, ctx); });
+	registry->register_command_with_context("LPOP", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LPop(args, ctx); });
+	registry->register_command_with_context("RPOP", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return RPop(args, ctx); });
+	registry->register_command_with_context("LLEN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LLen(args, ctx); });
+	registry->register_command_with_context("LINDEX", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LIndex(args, ctx); });
+	registry->register_command_with_context("LSET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LSet(args, ctx); });
+	registry->register_command_with_context("LRANGE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LRange(args, ctx); });
+	registry->register_command_with_context("LTRIM", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LTrim(args, ctx); });
+	registry->register_command_with_context("LREM", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LRem(args, ctx); });
+	registry->register_command_with_context("LINSERT", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LInsert(args, ctx); });
 }
 
-std::string ListFamily::LPush(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string ListFamily::LPush(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// LPUSH key value [value ...]
 	if (args.size() < 3) {
 		return RESPParser::make_error("wrong number of arguments for LPUSH");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
 		if (list_obj != nullptr && !list_obj->isList()) {
 			db->Del(key);
 		}
-		auto list = new std::deque<CompactObj>();
-		CompactObj new_list = CompactObj::fromList();
+		auto list = new std::deque<NanoObj>();
+		NanoObj new_list = NanoObj::fromList();
 		new_list.setObj(list);
 		db->Set(key, std::move(new_list));
 		list_obj = db->Find(key);
 	}
 
-	auto list = list_obj->getObj<std::deque<CompactObj>>();
+	auto list = list_obj->getObj<std::deque<NanoObj>>();
 
 	for (size_t i = 2; i < args.size(); i++) {
 		list->push_front(args[i]);
@@ -50,28 +50,28 @@ std::string ListFamily::LPush(const std::vector<CompactObj>& args, CommandContex
 	return RESPParser::make_integer(static_cast<int64_t>(list->size()));
 }
 
-std::string ListFamily::RPush(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string ListFamily::RPush(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// RPUSH key value [value ...]
 	if (args.size() < 3) {
 		return RESPParser::make_error("wrong number of arguments for RPUSH");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
 		if (list_obj != nullptr && !list_obj->isList()) {
 			db->Del(key);
 		}
-		auto list = new std::deque<CompactObj>();
-		CompactObj new_list = CompactObj::fromList();
+		auto list = new std::deque<NanoObj>();
+		NanoObj new_list = NanoObj::fromList();
 		new_list.setObj(list);
 		db->Set(key, std::move(new_list));
 		list_obj = db->Find(key);
 	}
 
-	auto list = list_obj->getObj<std::deque<CompactObj>>();
+	auto list = list_obj->getObj<std::deque<NanoObj>>();
 
 	for (size_t i = 2; i < args.size(); i++) {
 		list->push_back(args[i]);
@@ -80,21 +80,21 @@ std::string ListFamily::RPush(const std::vector<CompactObj>& args, CommandContex
 	return RESPParser::make_integer(static_cast<int64_t>(list->size()));
 }
 
-std::string ListFamily::LPop(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string ListFamily::LPop(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// LPOP key [count]
 	if (args.size() < 2 || args.size() > 3) {
 		return RESPParser::make_error("wrong number of arguments for LPOP");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
 		return RESPParser::make_null_bulk_string();
 	}
 
-	auto list = list_obj->getObj<std::deque<CompactObj>>();
+	auto list = list_obj->getObj<std::deque<NanoObj>>();
 
 	if (list->empty()) {
 		return RESPParser::make_null_bulk_string();
@@ -129,21 +129,21 @@ std::string ListFamily::LPop(const std::vector<CompactObj>& args, CommandContext
 	return result;
 }
 
-std::string ListFamily::RPop(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string ListFamily::RPop(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// RPOP key [count]
 	if (args.size() < 2 || args.size() > 3) {
 		return RESPParser::make_error("wrong number of arguments for RPOP");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
 		return RESPParser::make_null_bulk_string();
 	}
 
-	auto list = list_obj->getObj<std::deque<CompactObj>>();
+	auto list = list_obj->getObj<std::deque<NanoObj>>();
 
 	if (list->empty()) {
 		return RESPParser::make_null_bulk_string();
@@ -178,32 +178,32 @@ std::string ListFamily::RPop(const std::vector<CompactObj>& args, CommandContext
 	return result;
 }
 
-std::string ListFamily::LLen(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string ListFamily::LLen(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// LLEN key
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for LLEN");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
 		return RESPParser::make_integer(0);
 	}
 
-	auto list = list_obj->getObj<std::deque<CompactObj>>();
+	auto list = list_obj->getObj<std::deque<NanoObj>>();
 	return RESPParser::make_integer(static_cast<int64_t>(list->size()));
 }
 
-std::string ListFamily::LIndex(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string ListFamily::LIndex(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// LINDEX key index
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for LINDEX");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
@@ -215,7 +215,7 @@ std::string ListFamily::LIndex(const std::vector<CompactObj>& args, CommandConte
 		return RESPParser::make_error("value is not an integer or out of range");
 	}
 
-	auto list = list_obj->getObj<std::deque<CompactObj>>();
+	auto list = list_obj->getObj<std::deque<NanoObj>>();
 
 	if (index < 0) {
 		index += list->size();
@@ -228,14 +228,14 @@ std::string ListFamily::LIndex(const std::vector<CompactObj>& args, CommandConte
 	return RESPParser::make_bulk_string(list->at(index).toString());
 }
 
-std::string ListFamily::LSet(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string ListFamily::LSet(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// LSET key index value
 	if (args.size() != 4) {
 		return RESPParser::make_error("wrong number of arguments for LSET");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
@@ -247,7 +247,7 @@ std::string ListFamily::LSet(const std::vector<CompactObj>& args, CommandContext
 		return RESPParser::make_error("value is not an integer or out of range");
 	}
 
-	auto list = list_obj->getObj<std::deque<CompactObj>>();
+	auto list = list_obj->getObj<std::deque<NanoObj>>();
 
 	if (index < 0) {
 		index += list->size();
@@ -261,14 +261,14 @@ std::string ListFamily::LSet(const std::vector<CompactObj>& args, CommandContext
 	return RESPParser::ok_response();
 }
 
-std::string ListFamily::LRange(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string ListFamily::LRange(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// LRANGE key start stop
 	if (args.size() != 4) {
 		return RESPParser::make_error("wrong number of arguments for LRANGE");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
@@ -280,7 +280,7 @@ std::string ListFamily::LRange(const std::vector<CompactObj>& args, CommandConte
 		return RESPParser::make_error("value is not an integer or out of range");
 	}
 
-	auto list = list_obj->getObj<std::deque<CompactObj>>();
+	auto list = list_obj->getObj<std::deque<NanoObj>>();
 	int64_t len = list->size();
 
 	if (start < 0) {
@@ -317,14 +317,14 @@ std::string ListFamily::LRange(const std::vector<CompactObj>& args, CommandConte
 	return result;
 }
 
-std::string ListFamily::LTrim(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string ListFamily::LTrim(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// LTRIM key start stop
 	if (args.size() != 4) {
 		return RESPParser::make_error("wrong number of arguments for LTRIM");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
@@ -336,7 +336,7 @@ std::string ListFamily::LTrim(const std::vector<CompactObj>& args, CommandContex
 		return RESPParser::make_error("value is not an integer or out of range");
 	}
 
-	auto list = list_obj->getObj<std::deque<CompactObj>>();
+	auto list = list_obj->getObj<std::deque<NanoObj>>();
 	int64_t len = list->size();
 
 	if (start < 0) {
@@ -362,7 +362,7 @@ std::string ListFamily::LTrim(const std::vector<CompactObj>& args, CommandContex
 		stop = len - 1;
 	}
 
-	std::deque<CompactObj> trimmed;
+	std::deque<NanoObj> trimmed;
 	for (int64_t i = start; i <= stop; i++) {
 		trimmed.push_back(list->at(i));
 	}
@@ -371,14 +371,14 @@ std::string ListFamily::LTrim(const std::vector<CompactObj>& args, CommandContex
 	return RESPParser::ok_response();
 }
 
-std::string ListFamily::LRem(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string ListFamily::LRem(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// LREM key count value
 	if (args.size() != 4) {
 		return RESPParser::make_error("wrong number of arguments for LREM");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
@@ -390,7 +390,7 @@ std::string ListFamily::LRem(const std::vector<CompactObj>& args, CommandContext
 		return RESPParser::make_error("value is not an integer or out of range");
 	}
 
-	auto list = list_obj->getObj<std::deque<CompactObj>>();
+	auto list = list_obj->getObj<std::deque<NanoObj>>();
 	std::string value = args[3].toString();
 
 	int removed = 0;
@@ -432,14 +432,14 @@ std::string ListFamily::LRem(const std::vector<CompactObj>& args, CommandContext
 	return RESPParser::make_integer(removed);
 }
 
-std::string ListFamily::LInsert(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string ListFamily::LInsert(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// LINSERT key BEFORE|AFTER pivot value
 	if (args.size() != 5) {
 		return RESPParser::make_error("wrong number of arguments for LINSERT");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
 	if (list_obj == nullptr || !list_obj->isList()) {
@@ -454,9 +454,9 @@ std::string ListFamily::LInsert(const std::vector<CompactObj>& args, CommandCont
 	std::string pivot = args[3].toString();
 	std::string value = args[4].toString();
 
-	auto list = list_obj->getObj<std::deque<CompactObj>>();
+	auto list = list_obj->getObj<std::deque<NanoObj>>();
 
-	auto it = std::find_if(list->begin(), list->end(), [&pivot](const CompactObj& obj) {
+	auto it = std::find_if(list->begin(), list->end(), [&pivot](const NanoObj& obj) {
 		return obj.toString() == pivot;
 	});
 
@@ -465,9 +465,9 @@ std::string ListFamily::LInsert(const std::vector<CompactObj>& args, CommandCont
 	}
 
 	if (where == "BEFORE") {
-		list->insert(it, CompactObj::fromKey(value));
+		list->insert(it, NanoObj::fromKey(value));
 	} else {
-		list->insert(it + 1, CompactObj::fromKey(value));
+		list->insert(it + 1, NanoObj::fromKey(value));
 	}
 
 	return RESPParser::make_integer(static_cast<int64_t>(list->size()));

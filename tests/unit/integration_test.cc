@@ -3,7 +3,7 @@
 #include <chrono>
 #include "command/string_family.h"
 #include "command/command_registry.h"
-#include "core/compact_obj.h"
+#include "core/nano_obj.h"
 #include "core/database.h"
 #include "core/command_context.h"
 #include "server/engine_shard_set.h"
@@ -21,9 +21,9 @@ protected:
 	}
 
 	std::string ExecuteCommand(const std::string& cmd, const std::vector<std::string>& args, CommandContext* ctx) {
-		std::vector<CompactObj> full_args = {CompactObj::fromKey(cmd)};
+		std::vector<NanoObj> full_args = {NanoObj::fromKey(cmd)};
 		for (const auto& arg : args) {
-			full_args.push_back(CompactObj::fromKey(arg));
+			full_args.push_back(NanoObj::fromKey(arg));
 		}
 		return registry_->execute(full_args, ctx);
 	}

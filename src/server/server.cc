@@ -19,7 +19,7 @@ RedisServer::~RedisServer() {
 	term();
 }
 
-std::string RedisServer::process_command(const std::vector<CompactObj>& args) {
+std::string RedisServer::process_command(const std::vector<NanoObj>& args) {
 	CommandContext ctx(&store_, store_.CurrentDB());
 	return CommandRegistry::instance().execute(args, &ctx);
 }
@@ -30,7 +30,7 @@ int RedisServer::handle_client(photon::net::ISocketStream* stream) {
 	RESPParser parser(stream);
 
 	while (true) {
-		std::vector<CompactObj> args;
+		std::vector<NanoObj> args;
 		int ret = parser.parse_command(args);
 
 		if (ret < 0) {

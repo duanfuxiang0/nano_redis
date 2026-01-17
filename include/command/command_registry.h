@@ -6,20 +6,20 @@
 #include <functional>
 #include <absl/container/flat_hash_map.h>
 #include <absl/strings/string_view.h>
-#include "core/compact_obj.h"
+#include "core/nano_obj.h"
 
 struct CommandContext;
 
 class CommandRegistry {
 public:
-	using CommandHandler = std::function<std::string(const std::vector<CompactObj>&)>;
-	using CommandHandlerWithContext = std::function<std::string(const std::vector<CompactObj>&, CommandContext*)>;
+	using CommandHandler = std::function<std::string(const std::vector<NanoObj>&)>;
+	using CommandHandlerWithContext = std::function<std::string(const std::vector<NanoObj>&, CommandContext*)>;
 
 	static CommandRegistry& instance();
 
 	void register_command(const std::string& name, CommandHandler handler);
 	void register_command_with_context(const std::string& name, CommandHandlerWithContext handler);
-	std::string execute(const std::vector<CompactObj>& args, CommandContext* ctx = nullptr);
+	std::string execute(const std::vector<NanoObj>& args, CommandContext* ctx = nullptr);
 
 private:
 	CommandRegistry() = default;

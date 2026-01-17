@@ -1,5 +1,5 @@
 #include "core/dashtable.h"
-#include "core/compact_obj.h"
+#include "core/nano_obj.h"
 #include <cassert>
 #include <algorithm>
 #include <iostream>
@@ -242,7 +242,7 @@ bool DashTable<K, V>::IsDirectoryConsistent() const {
 }
 
 template class DashTable<std::string, std::string>;
-template class DashTable<std::string, CompactObj>;
+template class DashTable<std::string, NanoObj>;
 template class DashTable<int, int>;
 template class DashTable<int, double>;
-template class DashTable<CompactObj, CompactObj>;
+template class DashTable<NanoObj, NanoObj>;

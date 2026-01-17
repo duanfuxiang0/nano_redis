@@ -54,7 +54,7 @@ set(REDIS_HEADERS
   include/core/command_context.h
   include/core/database.h
   include/core/dashtable.h
-  include/core/compact_obj.h
+  include/core/nano_obj.h
   include/core/util.h
   include/core/task_queue.h
 )
@@ -75,7 +75,7 @@ set(REDIS_SOURCES
   src/command/list_family.cc
   src/core/dashtable.cc
   src/core/database.cc
-  src/core/compact_obj.cc
+  src/core/nano_obj.cc
   src/core/util.cc
   src/core/task_queue.cc
   src/core/command_context.cc
@@ -99,7 +99,7 @@ target_link_libraries(nano_redis_server PRIVATE nano_redis gflags_static)
 
 # Unit tests executable
 add_executable(unit_tests
-  tests/unit/compact_obj_test.cc
+  tests/unit/nano_obj_test.cc
   tests/unit/dashtable_debug_test.cc
   tests/unit/database_test.cc
   tests/unit/dashtable_debug_test.cc

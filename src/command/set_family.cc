@@ -8,7 +8,7 @@
 #include <algorithm>
 
 namespace {
-bool AllKeysSameShard(const std::vector<CompactObj>& args, size_t first_key_index, CommandContext* ctx) {
+bool AllKeysSameShard(const std::vector<NanoObj>& args, size_t first_key_index, CommandContext* ctx) {
 	if (ctx == nullptr) {
 		return true;
 	}
@@ -30,29 +30,29 @@ bool AllKeysSameShard(const std::vector<CompactObj>& args, size_t first_key_inde
 }  // namespace
 
 void SetFamily::Register(CommandRegistry* registry) {
-	registry->register_command_with_context("SADD", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SAdd(args, ctx); });
-	registry->register_command_with_context("SREM", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SRem(args, ctx); });
-	registry->register_command_with_context("SPOP", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SPop(args, ctx); });
-	registry->register_command_with_context("SMEMBERS", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SMembers(args, ctx); });
-	registry->register_command_with_context("SCARD", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SCard(args, ctx); });
-	registry->register_command_with_context("SISMEMBER", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SIsMember(args, ctx); });
-	registry->register_command_with_context("SMISMEMBER", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SMIsMember(args, ctx); });
-	registry->register_command_with_context("SINTER", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SInter(args, ctx); });
-	registry->register_command_with_context("SUNION", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SUnion(args, ctx); });
-	registry->register_command_with_context("SDIFF", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SDiff(args, ctx); });
-	registry->register_command_with_context("SSCAN", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SScan(args, ctx); });
-	registry->register_command_with_context("SRANDMEMBER", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SRandMember(args, ctx); });
-	registry->register_command_with_context("SMOVE", [](const std::vector<CompactObj>& args, CommandContext* ctx) { return SMove(args, ctx); });
+	registry->register_command_with_context("SADD", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SAdd(args, ctx); });
+	registry->register_command_with_context("SREM", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SRem(args, ctx); });
+	registry->register_command_with_context("SPOP", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SPop(args, ctx); });
+	registry->register_command_with_context("SMEMBERS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SMembers(args, ctx); });
+	registry->register_command_with_context("SCARD", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SCard(args, ctx); });
+	registry->register_command_with_context("SISMEMBER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SIsMember(args, ctx); });
+	registry->register_command_with_context("SMISMEMBER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SMIsMember(args, ctx); });
+	registry->register_command_with_context("SINTER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SInter(args, ctx); });
+	registry->register_command_with_context("SUNION", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SUnion(args, ctx); });
+	registry->register_command_with_context("SDIFF", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SDiff(args, ctx); });
+	registry->register_command_with_context("SSCAN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SScan(args, ctx); });
+	registry->register_command_with_context("SRANDMEMBER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SRandMember(args, ctx); });
+	registry->register_command_with_context("SMOVE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SMove(args, ctx); });
 }
 
-std::string SetFamily::SAdd(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string SetFamily::SAdd(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// SADD key member [member ...]
 	if (args.size() < 3) {
 		return RESPParser::make_error("wrong number of arguments for SADD");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -60,7 +60,7 @@ std::string SetFamily::SAdd(const std::vector<CompactObj>& args, CommandContext*
 			db->Del(key);
 		}
 		auto set = new SetType();
-		CompactObj new_set = CompactObj::fromSet();
+		NanoObj new_set = NanoObj::fromSet();
 		new_set.setObj(set);
 		db->Set(key, std::move(new_set));
 		set_obj = db->Find(key);
@@ -78,14 +78,14 @@ std::string SetFamily::SAdd(const std::vector<CompactObj>& args, CommandContext*
 	return RESPParser::make_integer(added);
 }
 
-std::string SetFamily::SRem(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string SetFamily::SRem(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// SREM key member [member ...]
 	if (args.size() < 3) {
 		return RESPParser::make_error("wrong number of arguments for SREM");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -108,14 +108,14 @@ std::string SetFamily::SRem(const std::vector<CompactObj>& args, CommandContext*
 	return RESPParser::make_integer(removed);
 }
 
-std::string SetFamily::SPop(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string SetFamily::SPop(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// SPOP key [count]
 	if (args.size() < 2 || args.size() > 3) {
 		return RESPParser::make_error("wrong number of arguments for SPOP");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -149,14 +149,14 @@ std::string SetFamily::SPop(const std::vector<CompactObj>& args, CommandContext*
 	return result;
 }
 
-std::string SetFamily::SMembers(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string SetFamily::SMembers(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// SMEMBERS key
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for SMEMBERS");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -173,14 +173,14 @@ std::string SetFamily::SMembers(const std::vector<CompactObj>& args, CommandCont
 	return result;
 }
 
-std::string SetFamily::SCard(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string SetFamily::SCard(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// SCARD key
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for SCARD");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -191,14 +191,14 @@ std::string SetFamily::SCard(const std::vector<CompactObj>& args, CommandContext
 	return RESPParser::make_integer(static_cast<int64_t>(set->size()));
 }
 
-std::string SetFamily::SIsMember(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string SetFamily::SIsMember(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// SISMEMBER key member
 	if (args.size() != 3) {
 		return RESPParser::make_error("wrong number of arguments for SISMEMBER");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -211,14 +211,14 @@ std::string SetFamily::SIsMember(const std::vector<CompactObj>& args, CommandCon
 	return RESPParser::make_integer(set->count(member) ? 1 : 0);
 }
 
-std::string SetFamily::SMIsMember(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string SetFamily::SMIsMember(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// SMISMEMBER key member [member ...]
 	if (args.size() < 3) {
 		return RESPParser::make_error("wrong number of arguments for SMISMEMBER");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	std::string result = RESPParser::make_array(args.size() - 2);
@@ -239,7 +239,7 @@ std::string SetFamily::SMIsMember(const std::vector<CompactObj>& args, CommandCo
 	return result;
 }
 
-std::string SetFamily::SInter(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string SetFamily::SInter(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// SINTER key [key ...]
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for SINTER");
@@ -253,7 +253,7 @@ std::string SetFamily::SInter(const std::vector<CompactObj>& args, CommandContex
 
 	std::vector<SetType*> sets;
 	for (size_t i = 1; i < args.size(); i++) {
-		const CompactObj& key = args[i];
+		const NanoObj& key = args[i];
 		auto* set_obj = db->Find(key);
 
 		if (set_obj == nullptr || !set_obj->isSet()) {
@@ -283,7 +283,7 @@ std::string SetFamily::SInter(const std::vector<CompactObj>& args, CommandContex
 	return result;
 }
 
-std::string SetFamily::SUnion(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string SetFamily::SUnion(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// SUNION key [key ...]
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for SUNION");
@@ -297,7 +297,7 @@ std::string SetFamily::SUnion(const std::vector<CompactObj>& args, CommandContex
 
 	SetType union_set;
 	for (size_t i = 1; i < args.size(); i++) {
-		const CompactObj& key = args[i];
+		const NanoObj& key = args[i];
 		auto* set_obj = db->Find(key);
 
 		if (set_obj != nullptr && set_obj->isSet()) {
@@ -314,14 +314,14 @@ std::string SetFamily::SUnion(const std::vector<CompactObj>& args, CommandContex
 	return result;
 }
 
-std::string SetFamily::SDiff(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string SetFamily::SDiff(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// SDIFF key [key ...]
 	if (args.size() < 2) {
 		return RESPParser::make_error("wrong number of arguments for SDIFF");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -335,7 +335,7 @@ std::string SetFamily::SDiff(const std::vector<CompactObj>& args, CommandContext
 	}
 
 	for (size_t i = 2; i < args.size(); i++) {
-		const CompactObj& other_key = args[i];
+		const NanoObj& other_key = args[i];
 		auto* other_set_obj = db->Find(other_key);
 
 		if (other_set_obj != nullptr && other_set_obj->isSet()) {
@@ -354,14 +354,14 @@ std::string SetFamily::SDiff(const std::vector<CompactObj>& args, CommandContext
 	return result;
 }
 
-std::string SetFamily::SScan(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string SetFamily::SScan(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// SSCAN key cursor (simplified)
 	if (args.size() < 3) {
 		return RESPParser::make_error("wrong number of arguments for SSCAN");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -396,14 +396,14 @@ std::string SetFamily::SScan(const std::vector<CompactObj>& args, CommandContext
 	return result;
 }
 
-std::string SetFamily::SRandMember(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string SetFamily::SRandMember(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// SRANDMEMBER key [count]
 	if (args.size() < 2 || args.size() > 3) {
 		return RESPParser::make_error("wrong number of arguments for SRANDMEMBER");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& key = args[1];
+	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
@@ -443,15 +443,15 @@ std::string SetFamily::SRandMember(const std::vector<CompactObj>& args, CommandC
 	return result;
 }
 
-std::string SetFamily::SMove(const std::vector<CompactObj>& args, CommandContext* ctx) {
+std::string SetFamily::SMove(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	// SMOVE source destination member
 	if (args.size() != 4) {
 		return RESPParser::make_error("wrong number of arguments for SMOVE");
 	}
 
 	auto* db = ctx->GetDB();
-	const CompactObj& src_key = args[1];
-	const CompactObj& dest_key = args[2];
+	const NanoObj& src_key = args[1];
+	const NanoObj& dest_key = args[2];
 	const std::string member = args[3].toString();
 
 	if (!AllKeysSameShard(args, 1, ctx)) {
@@ -483,7 +483,7 @@ std::string SetFamily::SMove(const std::vector<CompactObj>& args, CommandContext
 			db->Del(dest_key);
 		}
 		auto dest_set = new SetType();
-		CompactObj new_set = CompactObj::fromSet();
+		NanoObj new_set = NanoObj::fromSet();
 		new_set.setObj(dest_set);
 		db->Set(dest_key, std::move(new_set));
 		dest_obj = db->Find(dest_key);
