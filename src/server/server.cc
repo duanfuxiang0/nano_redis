@@ -4,11 +4,21 @@
 #include "command/string_family.h"
 #include <photon/common/alog.h>
 #include <photon/common/alog-stdstring.h>
+#include <photon/common/utility.h>
 #include <photon/thread/st.h>
+#include <gflags/gflags.h>
 #include <netinet/tcp.h>
 
+DECLARE_bool(tcp_nodelay);
+DECLARE_bool(use_iouring_tcp_server);
+
 RedisServer::RedisServer()
-    : server_(photon::net::new_tcp_socket_server()) {
+    : server_(FLAGS_use_iouring_tcp_server ? photon::net::new_iouring_tcp_server()
+                                           : photon::net::new_tcp_socket_server()) {
+	if (server_ == nullptr && FLAGS_use_iouring_tcp_server) {
+		LOG_WARN("Failed to create io_uring TCP server, falling back to syscall TCP server");
+		server_.reset(photon::net::new_tcp_socket_server());
+	}
 	StringFamily::Register(&CommandRegistry::instance());
 	HashFamily::Register(&CommandRegistry::instance());
 	SetFamily::Register(&CommandRegistry::instance());
@@ -26,6 +36,13 @@ std::string RedisServer::process_command(const std::vector<NanoObj>& args) {
 
 int RedisServer::handle_client(photon::net::ISocketStream* stream) {
 	// LOG_INFO("New client connected");
+	if (stream == nullptr) {
+		return -1;
+	}
+	DEFER(stream->close());
+
+	const int nodelay = FLAGS_tcp_nodelay ? 1 : 0;
+	(void)stream->setsockopt(IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
 
 	RESPParser parser(stream);
 

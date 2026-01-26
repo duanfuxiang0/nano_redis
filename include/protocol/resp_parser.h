@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <vector>
 #include <photon/net/socket.h>
 #include "core/nano_obj.h"
@@ -37,15 +38,24 @@ public:
 
 private:
 	int parse_array(std::vector<NanoObj>& args);
-	int parse_inline_command(const std::string& line, std::vector<NanoObj>& args);
+	int parse_inline_command(std::string_view line, std::vector<NanoObj>& args);
 	int parse_value(ParsedValue& value);
 
 	char read_char();
 	std::string read_line();
 	std::string read_bulk_string(int64_t len);
+	int read_bulk_string_into(int64_t len, NanoObj& out);
 	int fill_buffer();
 
 private:
+	int ReadLineView(std::string_view* out);
+	int ReadInlineLineView(char first_char, std::string_view* out);
+
+	// Scratch buffers used when the line spans multiple recv() fills.
+	// These are reused across calls to avoid per-command allocations.
+	std::string scratch_line_;
+	std::string scratch_inline_;
+
 	photon::net::ISocketStream* stream_;
 	char buffer_[8192];
 	size_t buffer_pos_ = 0;

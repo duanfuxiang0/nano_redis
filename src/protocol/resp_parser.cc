@@ -2,14 +2,26 @@
 #include "core/util.h"
 #include <photon/common/alog.h>
 #include <photon/net/socket.h>
+#include <charconv>
 #include <cctype>
-#include <cstdio>
+#include <cstring>
+#include <limits>
+#include <system_error>
 
 namespace {
 const std::string kOkResponse = "+OK\r\n";
 const std::string kPongResponse = "+PONG\r\n";
 const std::string kNullBulkResponse = "$-1\r\n";
 const std::string kEmptyArrayResponse = "*0\r\n";
+
+template <typename IntT>
+inline int ToChars(char* first, char* last, IntT value) {
+	auto res = std::to_chars(first, last, value);
+	if (res.ec != std::errc()) {
+		return -1;
+	}
+	return static_cast<int>(res.ptr - first);
+}
 }
 
 const std::string& RESPParser::ok_response() {
@@ -47,34 +59,128 @@ char RESPParser::read_char() {
     return buffer_[buffer_pos_++];
 }
 
-std::string RESPParser::read_line() {
-    std::string line;
+int RESPParser::ReadLineView(std::string_view* out) {
+    scratch_line_.clear();
+    bool used_scratch = false;
+
     while (true) {
         if (fill_buffer() < 0) {
-            break;
+            *out = std::string_view();
+            return -1;
         }
+
         const char* start = buffer_ + buffer_pos_;
         const char* end = buffer_ + buffer_size_;
-        const char* p = start;
-        while (p < end) {
-            if (*p == '\r') {
-                line.append(start, p - start);
-                buffer_pos_ = (p - buffer_) + 1;
-                if (buffer_pos_ < buffer_size_ && buffer_[buffer_pos_] == '\n') {
-                    buffer_pos_++;
-                }
-                return line;
-            } else if (*p == '\n') {
-                line.append(start, p - start);
-                buffer_pos_ = (p - buffer_) + 1;
-                return line;
-            }
-            ++p;
+        const size_t avail = static_cast<size_t>(end - start);
+
+        const char* lf = static_cast<const char*>(std::memchr(start, '\n', avail));
+        const char* cr = static_cast<const char*>(std::memchr(start, '\r', avail));
+
+        const char* term = nullptr;
+        bool term_is_cr = false;
+        if (lf && cr) {
+            term = (lf < cr) ? lf : cr;
+            term_is_cr = (term == cr);
+        } else if (lf) {
+            term = lf;
+        } else if (cr) {
+            term = cr;
+            term_is_cr = true;
         }
-        line.append(start, end - start);
-        buffer_pos_ = buffer_size_;
+
+        if (term == nullptr) {
+            used_scratch = true;
+            scratch_line_.append(start, avail);
+            buffer_pos_ = buffer_size_;
+            continue;
+        }
+
+        if (used_scratch) {
+            scratch_line_.append(start, static_cast<size_t>(term - start));
+            *out = std::string_view(scratch_line_);
+        } else {
+            *out = std::string_view(start, static_cast<size_t>(term - start));
+        }
+
+        buffer_pos_ = static_cast<size_t>((term - buffer_) + 1);
+        if (term_is_cr && buffer_pos_ < buffer_size_ && buffer_[buffer_pos_] == '\n') {
+            buffer_pos_++;
+        }
+        return 0;
     }
-    return line;
+}
+
+int RESPParser::ReadInlineLineView(char first_char, std::string_view* out) {
+    // `first_char` was read from buffer_[buffer_pos_ - 1].
+    // Fast path: if the line terminator is in the current buffer, return a view into buffer_.
+    // Slow path: if the line spans buffers, stitch into scratch_inline_ (reused).
+    const char* first_ptr = (buffer_pos_ > 0) ? (buffer_ + buffer_pos_ - 1) : nullptr;
+    scratch_inline_.clear();
+    bool used_scratch = false;
+
+    while (true) {
+        if (fill_buffer() < 0) {
+            *out = std::string_view();
+            return -1;
+        }
+
+        const char* start = buffer_ + buffer_pos_;
+        const char* end = buffer_ + buffer_size_;
+        const size_t avail = static_cast<size_t>(end - start);
+
+        const char* lf = static_cast<const char*>(std::memchr(start, '\n', avail));
+        const char* cr = static_cast<const char*>(std::memchr(start, '\r', avail));
+
+        const char* term = nullptr;
+        bool term_is_cr = false;
+        if (lf && cr) {
+            term = (lf < cr) ? lf : cr;
+            term_is_cr = (term == cr);
+        } else if (lf) {
+            term = lf;
+        } else if (cr) {
+            term = cr;
+            term_is_cr = true;
+        }
+
+        if (term == nullptr) {
+            if (!used_scratch) {
+                used_scratch = true;
+                scratch_inline_.push_back(first_char);
+            }
+            scratch_inline_.append(start, avail);
+            buffer_pos_ = buffer_size_;
+            continue;
+        }
+
+        if (used_scratch) {
+            scratch_inline_.append(start, static_cast<size_t>(term - start));
+            *out = std::string_view(scratch_inline_);
+        } else {
+            // If we couldn't compute a pointer to the first char, fall back to scratch.
+            if (first_ptr == nullptr) {
+                scratch_inline_.push_back(first_char);
+                scratch_inline_.append(start, static_cast<size_t>(term - start));
+                *out = std::string_view(scratch_inline_);
+            } else {
+                *out = std::string_view(first_ptr, static_cast<size_t>(term - first_ptr));
+            }
+        }
+
+        buffer_pos_ = static_cast<size_t>((term - buffer_) + 1);
+        if (term_is_cr && buffer_pos_ < buffer_size_ && buffer_[buffer_pos_] == '\n') {
+            buffer_pos_++;
+        }
+        return 0;
+    }
+}
+
+std::string RESPParser::read_line() {
+    std::string_view sv;
+    if (ReadLineView(&sv) < 0) {
+        return {};
+    }
+    return std::string(sv);
 }
 
 std::string RESPParser::read_bulk_string(int64_t len) {
@@ -102,7 +208,35 @@ std::string RESPParser::read_bulk_string(int64_t len) {
     return result;
 }
 
-int RESPParser::parse_inline_command(const std::string& line, std::vector<NanoObj>& args) {
+int RESPParser::read_bulk_string_into(int64_t len, NanoObj& out) {
+    if (len < 0) {
+        out = NanoObj();
+        return 0;
+    }
+
+    char* dst = out.PrepareStringBuffer(static_cast<size_t>(len));
+    size_t total_read = 0;
+    while (total_read < static_cast<size_t>(len)) {
+        if (fill_buffer() < 0) {
+            out = NanoObj();
+            return -1;
+        }
+        size_t available = buffer_size_ - buffer_pos_;
+        size_t to_read = std::min(available, static_cast<size_t>(len) - total_read);
+        std::memcpy(dst + total_read, buffer_ + buffer_pos_, to_read);
+        buffer_pos_ += to_read;
+        total_read += to_read;
+    }
+
+    read_char();
+    read_char();
+
+    out.FinalizePreparedString();
+    out.MaybeConvertToInt();
+    return 0;
+}
+
+int RESPParser::parse_inline_command(std::string_view line, std::vector<NanoObj>& args) {
     const char* p = line.data();
     const char* end = p + line.size();
 
@@ -126,8 +260,8 @@ int RESPParser::parse_inline_command(const std::string& line, std::vector<NanoOb
 }
 
 int RESPParser::parse_array(std::vector<NanoObj>& args) {
-    std::string line = read_line();
-    if (line.empty()) {
+    std::string_view line;
+    if (ReadLineView(&line) < 0 || line.empty()) {
         return -1;
     }
 
@@ -139,6 +273,10 @@ int RESPParser::parse_array(std::vector<NanoObj>& args) {
         return 0;
     }
 
+    if (count > 0 && count <= static_cast<int64_t>(std::numeric_limits<size_t>::max())) {
+        args.reserve(static_cast<size_t>(count));
+    }
+
     for (int64_t i = 0; i < count; i++) {
         char c = read_char();
         if (c == '\r' || c == '\n') {
@@ -146,19 +284,37 @@ int RESPParser::parse_array(std::vector<NanoObj>& args) {
         }
 
         if (c == '$') {
-            std::string len_str = read_line();
+            std::string_view len_str;
+            if (ReadLineView(&len_str) < 0) {
+                return -1;
+            }
             int64_t len = 0;
             if (!string2ll(len_str.data(), len_str.size(), &len)) {
                 return -1;
             }
-            std::string bulk = read_bulk_string(len);
-            args.push_back(NanoObj::fromKey(bulk));
+            NanoObj bulk;
+            if (read_bulk_string_into(len, bulk) < 0) {
+                return -1;
+            }
+            args.push_back(std::move(bulk));
         } else if (c == '+') {
-            args.push_back(NanoObj::fromKey(read_line()));
+            std::string_view sv;
+            if (ReadLineView(&sv) < 0) {
+                return -1;
+            }
+            args.push_back(NanoObj::fromKey(sv));
         } else if (c == ':') {
-            args.push_back(NanoObj::fromKey(read_line()));
+            std::string_view sv;
+            if (ReadLineView(&sv) < 0) {
+                return -1;
+            }
+            args.push_back(NanoObj::fromKey(sv));
         } else if (c == '-') {
-            args.push_back(NanoObj::fromKey(read_line()));
+            std::string_view sv;
+            if (ReadLineView(&sv) < 0) {
+                return -1;
+            }
+            args.push_back(NanoObj::fromKey(sv));
         } else {
             return -1;
         }
@@ -176,15 +332,30 @@ int RESPParser::parse_value(ParsedValue& value) {
     switch (c) {
         case '+':
             value.type = DataType::SimpleString;
-            value.obj_value = NanoObj::fromKey(read_line());
+            {
+                std::string_view sv;
+                if (ReadLineView(&sv) < 0) {
+                    return -1;
+                }
+                value.obj_value = NanoObj::fromKey(sv);
+            }
             return 0;
         case '-':
             value.type = DataType::Error;
-            value.obj_value = NanoObj::fromKey(read_line());
+            {
+                std::string_view sv;
+                if (ReadLineView(&sv) < 0) {
+                    return -1;
+                }
+                value.obj_value = NanoObj::fromKey(sv);
+            }
             return 0;
         case ':': {
             value.type = DataType::Integer;
-            std::string line = read_line();
+            std::string_view line;
+            if (ReadLineView(&line) < 0) {
+                return -1;
+            }
             int64_t int_val = 0;
             if (!string2ll(line.data(), line.size(), &int_val)) {
                 return -1;
@@ -193,14 +364,19 @@ int RESPParser::parse_value(ParsedValue& value) {
             return 0;
         }
         case '$': {
-            std::string len_str = read_line();
+            std::string_view len_str;
+            if (ReadLineView(&len_str) < 0) {
+                return -1;
+            }
             int64_t len = 0;
             if (!string2ll(len_str.data(), len_str.size(), &len)) {
                 return -1;
             }
             value.type = DataType::BulkString;
             if (len >= 0) {
-                value.obj_value = NanoObj::fromKey(read_bulk_string(len));
+                if (read_bulk_string_into(len, value.obj_value) < 0) {
+                    return -1;
+                }
             } else {
                 value.obj_value = NanoObj();
             }
@@ -222,8 +398,10 @@ int RESPParser::parse_command(std::vector<NanoObj>& args) {
     if (c == '*') {
         return parse_array(args);
     } else {
-        std::string line(1, c);
-        line += read_line();
+        std::string_view line;
+        if (ReadInlineLineView(c, &line) < 0) {
+            return -1;
+        }
         return parse_inline_command(line, args);
     }
 }
@@ -248,7 +426,10 @@ std::string RESPParser::make_error(const std::string& msg) {
 
 std::string RESPParser::make_bulk_string(const std::string& s) {
     char len_buf[24];
-    int len_len = snprintf(len_buf, sizeof(len_buf), "%zu", s.size());
+	int len_len = ToChars(len_buf, len_buf + sizeof(len_buf), s.size());
+	if (len_len < 0) {
+		return "$-1\r\n";
+	}
     std::string result;
     result.reserve(1 + len_len + 2 + s.size() + 2);
     result.push_back('$');
@@ -265,7 +446,10 @@ std::string RESPParser::make_null_bulk_string() {
 
 std::string RESPParser::make_integer(int64_t value) {
     char buf[24];
-    int len = snprintf(buf, sizeof(buf), "%ld", value);
+	int len = ToChars(buf, buf + sizeof(buf), value);
+	if (len < 0) {
+		return ":0\r\n";
+	}
     std::string result;
     result.reserve(1 + len + 2);
     result.push_back(':');
@@ -276,7 +460,10 @@ std::string RESPParser::make_integer(int64_t value) {
 
 std::string RESPParser::make_array(int64_t count) {
     char buf[24];
-    int len = snprintf(buf, sizeof(buf), "%ld", count);
+	int len = ToChars(buf, buf + sizeof(buf), count);
+	if (len < 0) {
+		return "*0\r\n";
+	}
     std::string result;
     result.reserve(1 + len + 2);
     result.push_back('*');

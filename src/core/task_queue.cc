@@ -119,6 +119,8 @@ void TaskQueue::Run() {
 			++processed;
 		}
 		if (processed != 0) {
+			// We are actively running; allow a future idle phase to be woken up again.
+			wake_pending_.store(false, std::memory_order_release);
 			photon::thread_yield();
 			continue;
 		}
@@ -138,12 +140,16 @@ void TaskQueue::Run() {
 				photon::thread_yield();
 				continue;
 			}
+			// We are about to block; allow exactly one producer wakeup.
+			wake_pending_.store(false, std::memory_order_release);
 			pull_sem_.wait(1, kWaitUsec);
 			yield_turn = kMaxYieldTurn;
 			yield_timeout.timeout(kMaxYieldUsec);
 		}
 
 		if (!is_closed_.load(std::memory_order_relaxed)) {
+			// We are awake and will execute work; clear wake pending.
+			wake_pending_.store(false, std::memory_order_release);
 			func();
 		}
 	}
@@ -154,8 +160,10 @@ void TaskQueue::Run() {
 }
 
 void TaskQueue::Start(const std::string& base_name) {
+	// TaskQueue consumer fibers do not need the default 8MB stack.
+	static constexpr uint64_t kConsumerStackSize = 256UL * 1024;  // 256KB
 	for (size_t i = 0; i < num_consumers_; ++i) {
-		auto* th = photon::thread_create11([this]() { Run(); });
+		auto* th = photon::thread_create11(kConsumerStackSize, [this]() { Run(); });
 		auto* handle = photon::thread_enable_join(th);
 		consumer_fibers_.push_back(handle);
 	}

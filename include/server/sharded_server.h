@@ -3,6 +3,7 @@
 #include <memory>
 #include <cstddef>
 #include <cstdint>
+#include <atomic>
 
 class ProactorPool;
 
@@ -24,5 +25,5 @@ private:
 	std::unique_ptr<ProactorPool> proactor_pool_;
 	size_t num_shards_;
 	uint16_t port_;
-	volatile bool running_ = false;
+	std::atomic<bool> running_{false};
 };

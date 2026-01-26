@@ -18,11 +18,17 @@ The project has a simple structure with three main directories:
 
 ## Build, Lint, and Test Commands
 
-### Re Build
+### Build
 ```bash
-rm -rf build && mkdir build && cd build
-cmake ..
-cmake --build .
+# Debug
+rm -rf build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build -j
+
+# Release
+rm -rf build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
 ```
 
 ### Run All Tests

@@ -14,8 +14,13 @@
 #include <photon/common/alog-stdstring.h>
 
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <unistd.h>
 #include <string_view>
+#include <gflags/gflags.h>
+
+DECLARE_bool(tcp_nodelay);
+DECLARE_bool(use_iouring_tcp_server);
 
 namespace {
 bool EqualsIgnoreCase(std::string_view a, std::string_view b) {
@@ -47,8 +52,11 @@ ProactorPool::~ProactorPool() {
 	Join();
 }
 
-void ProactorPool::Start() {
+bool ProactorPool::Start() {
 	running_ = true;
+	init_failed_ = false;
+	init_done_vcpus_.store(0);
+	init_ok_vcpus_.store(0);
 
 	shard_set_ = std::make_unique<EngineShardSet>(num_vcpus_);
 
@@ -56,30 +64,37 @@ void ProactorPool::Start() {
 		threads_.emplace_back(&ProactorPool::VcpuMain, this, i);
 	}
 
-	{
-		std::unique_lock<std::mutex> lock(vcpu_mutex_);
-		vcpu_cv_.wait(lock, [this]() { return ready_vcpus_ >= num_vcpus_; });
+	// IMPORTANT: Don't block the OS thread here (std::condition_variable::wait),
+	// otherwise Photon signal handling (signalfd) can't run and Ctrl-C won't work.
+	while (init_done_vcpus_.load() < num_vcpus_ && running_.load()) {
+		photon::thread_usleep(1000);  // 1ms
+	}
+
+	if (!running_.load() || init_failed_.load() || init_ok_vcpus_.load() != num_vcpus_) {
+		LOG_ERROR("ProactorPool failed to start: ok=`/` done=`/` port=`",
+			init_ok_vcpus_.load(), num_vcpus_, init_done_vcpus_.load(), num_vcpus_, port_);
+		Stop();
+		Join();
+		return false;
 	}
 
 	LOG_INFO("ProactorPool started with ` vCPUs on port `", num_vcpus_, port_);
+	return true;
 }
 
 void ProactorPool::Stop() {
-	if (!running_) {
-		return;
-	}
-
 	running_ = false;
 
-	if (shard_set_) {
-		for (size_t i = 0; i < num_vcpus_; ++i) {
-			photon::net::ISocketServer* server = servers_[i];
-			shard_set_->Add(i, [server]() {
-				if (server) {
-					server->terminate();
-				}
-			});
+	// NOTE: We must be able to stop even if the per-shard TaskQueue hasn't started
+	// (e.g. bind/listen failed). So we terminate servers directly.
+	for (size_t i = 0; i < num_vcpus_; ++i) {
+		photon::net::ISocketServer* server = servers_[i];
+		if (server) {
+			server->terminate();
 		}
+	}
+
+	if (shard_set_) {
 		shard_set_->Stop();
 	}
 }
@@ -101,18 +116,38 @@ photon::vcpu_base* ProactorPool::GetVcpu(size_t index) {
 }
 
 void ProactorPool::VcpuMain(size_t vcpu_index) {
+	bool init_reported = false;
+	auto report_init = [this, &init_reported](bool ok) {
+		if (init_reported) {
+			return;
+		}
+		init_reported = true;
+		init_done_vcpus_.fetch_add(1);
+		if (ok) {
+			init_ok_vcpus_.fetch_add(1);
+		} else {
+			init_failed_.store(true);
+		}
+	};
+
+	photon::PhotonOptions photon_options;
+	photon_options.use_pooled_stack_allocator = true;
+
 	int ret = photon::init(
 		photon::INIT_EVENT_IOURING | photon::INIT_EVENT_SIGNAL,
-		photon::INIT_IO_NONE
+		photon::INIT_IO_NONE,
+		photon_options
 	);
 	if (ret < 0) {
 		LOG_WARN("vCPU `: Failed to initialize io_uring, falling back to epoll", vcpu_index);
 		ret = photon::init(
 			photon::INIT_EVENT_EPOLL | photon::INIT_EVENT_SIGNAL,
-			photon::INIT_IO_NONE
+			photon::INIT_IO_NONE,
+			photon_options
 		);
 		if (ret < 0) {
 			LOG_ERROR("vCPU `: Failed to initialize photon", vcpu_index);
+			report_init(false);
 			return;
 		}
 		LOG_INFO("vCPU ` initialized with epoll", vcpu_index);
@@ -126,9 +161,16 @@ void ProactorPool::VcpuMain(size_t vcpu_index) {
 	EngineShard* shard = shard_set_->GetShard(vcpu_index);
 	shard->InitializeInThread();
 
-	auto* server = photon::net::new_tcp_socket_server();
+	photon::net::ISocketServer* server =
+	    FLAGS_use_iouring_tcp_server ? photon::net::new_iouring_tcp_server()
+	                                 : photon::net::new_tcp_socket_server();
+	if (server == nullptr && FLAGS_use_iouring_tcp_server) {
+		LOG_WARN("vCPU `: Failed to create io_uring TCP server, falling back to syscall TCP server", vcpu_index);
+		server = photon::net::new_tcp_socket_server();
+	}
 	if (server == nullptr) {
 		LOG_ERROR("vCPU `: Failed to create socket server", vcpu_index);
+		report_init(false);
 		return;
 	}
 	DEFER(delete server);
@@ -138,16 +180,19 @@ void ProactorPool::VcpuMain(size_t vcpu_index) {
 	ret = server->setsockopt<int>(SOL_SOCKET, SO_REUSEPORT, 1);
 	if (ret < 0) {
 		LOG_ERROR("vCPU `: Failed to set SO_REUSEPORT", vcpu_index);
+		report_init(false);
 		return;
 	}
 
 	if (server->bind_v4any(port_) < 0) {
 		LOG_ERROR("vCPU `: Failed to bind port `", vcpu_index, port_);
+		report_init(false);
 		return;
 	}
 
 	if (server->listen(128) < 0) {
 		LOG_ERROR("vCPU `: Failed to listen", vcpu_index);
+		report_init(false);
 		return;
 	}
 
@@ -156,11 +201,7 @@ void ProactorPool::VcpuMain(size_t vcpu_index) {
 
 	shard->GetTaskQueue()->Start("shard-" + std::to_string(vcpu_index));
 
-	{
-		std::lock_guard<std::mutex> lock(vcpu_mutex_);
-		++ready_vcpus_;
-	}
-	vcpu_cv_.notify_all();
+	report_init(true);
 
 	server->set_handler({this, &ProactorPool::HandleConnection});
 
@@ -170,6 +211,14 @@ void ProactorPool::VcpuMain(size_t vcpu_index) {
 }
 
 int ProactorPool::HandleConnection(photon::net::ISocketStream* stream) {
+	if (stream == nullptr) {
+		return -1;
+	}
+	DEFER(stream->close());
+
+	const int nodelay = FLAGS_tcp_nodelay ? 1 : 0;
+	(void)stream->setsockopt(IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+
 	EngineShard* local_shard = EngineShard::tlocal();
 	size_t vcpu_index = local_shard->shard_id();
 
@@ -198,33 +247,38 @@ int ProactorPool::HandleConnection(photon::net::ISocketStream* stream) {
 			return 0;
 		}
 
+		// IMPORTANT:
+		// In multi-shard mode we must serialize ALL DB accesses on the shard's TaskQueue,
+		// otherwise multiple connection fibers can concurrently touch the same DB and corrupt
+		// internal hash tables (we observed hangs inside ankerl::unordered_dense).
 		std::string response;
 
+		size_t target_shard = vcpu_index;
 		if (args.size() >= 2) {
-			std::string_view key = args[1].getStringView();
-			size_t target_shard = Shard(key, num_vcpus_);
+			// NOTE: keys may be stored as INT_TAG internally, so don't use getStringView() here.
+			// Always hash using the string representation.
+			const std::string key = args[1].toString();
+			target_shard = Shard(key, num_vcpus_);
+		}
 
-			if (target_shard == vcpu_index) {
-				CommandContext ctx(local_shard, shard_set_.get(), num_vcpus_,
-					local_shard->GetDB().CurrentDB());
-				response = CommandRegistry::instance().execute(args, &ctx);
-			} else {
-				std::vector<NanoObj> forwarded_args;
-				forwarded_args.swap(args);
-				response = shard_set_->Await(target_shard, [this, forwarded_args = std::move(forwarded_args), target_shard]() mutable {
-					EngineShard* target = shard_set_->GetShard(target_shard);
-					CommandContext ctx(target, shard_set_.get(), num_vcpus_,
-						target->GetDB().CurrentDB());
-					return CommandRegistry::instance().execute(forwarded_args, &ctx);
-				});
-				if (args.capacity() < 8) {
-					args.reserve(8);
-				}
-			}
-		} else {
-			CommandContext ctx(local_shard, shard_set_.get(), num_vcpus_,
-				local_shard->GetDB().CurrentDB());
-			response = CommandRegistry::instance().execute(args, &ctx);
+		std::vector<NanoObj> forwarded_args;
+		forwarded_args.swap(args);
+
+		response = shard_set_->Await(
+		    target_shard,
+		    [this, forwarded_args = std::move(forwarded_args), target_shard]() mutable -> std::string {
+			    (void)target_shard;
+			    EngineShard* shard = EngineShard::tlocal();
+			    if (shard == nullptr) {
+				    return RESPParser::make_error("ERR internal shard context");
+			    }
+			    CommandContext ctx(shard, shard_set_.get(), num_vcpus_, shard->GetDB().CurrentDB());
+			    return CommandRegistry::instance().execute(forwarded_args, &ctx);
+		    });
+
+		// Keep args buffer reasonably sized.
+		if (args.capacity() < 8) {
+			args.reserve(8);
 		}
 
 		ssize_t written = stream->send(response.data(), response.size());

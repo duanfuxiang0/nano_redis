@@ -68,6 +68,10 @@ public:
 	static NanoObj fromInt(int64_t val);
 	static NanoObj fromKey(std::string_view key);
 
+	char* PrepareStringBuffer(size_t len);
+	void FinalizePreparedString();
+	bool MaybeConvertToInt();
+
 	bool operator==(const NanoObj& other) const;
 	bool operator!=(const NanoObj& other) const;
 
@@ -108,7 +112,7 @@ public:
 			return;
 		}
 		if (u_.robj.inner_obj_ != nullptr) {
-			::operator delete(u_.robj.inner_obj_);
+			freeRobj();
 		}
 		u_.robj.inner_obj_ = obj;
 	}
@@ -127,6 +131,7 @@ private:
 	void setTag(uint8_t tag);
 	void setFlag(uint8_t flag);
 	void clear();
+	void freeRobj();
 	void setString(std::string_view str);
 	void setStringKey(std::string_view str);
 	void setInt(int64_t val);

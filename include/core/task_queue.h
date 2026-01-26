@@ -82,6 +82,9 @@ private:
 
 	photon::semaphore pull_sem_;
 	std::atomic<uint64_t> idler_ {0};
+	// Coalesce wakeups: avoid hammering semaphore::signal under load.
+	// When true, a wakeup has been issued (or is pending) for an idling consumer.
+	std::atomic<bool> wake_pending_{false};
 
 	size_t num_consumers_;
 	std::vector<photon::join_handle*> consumer_fibers_;
@@ -92,11 +95,14 @@ template <typename F>
 bool TaskQueue::TryAdd(F&& func) {
 	bool enqueued = TryEnqueue(CbFunc(std::forward<F>(func)));
 	if (enqueued) {
-		// OPTIMIZED: Always signal consumer to avoid missed notifications
-		// The old logic (only signal when idler_ != 0) caused problems
-		// under high load: consumers keep working (idler_ = 0),
-		// new tasks enter queue but consumers are never signaled.
-		pull_sem_.signal(1);
+		// Only wake consumers that are idling/waiting.
+		// Under high load, always signaling here becomes a major hotspot
+		// (spinlock + reschedule IPIs). Consumers that are actively running
+		// will pick up newly enqueued tasks without needing a wakeup.
+		if (idler_.load(std::memory_order_acquire) != 0 &&
+		    !wake_pending_.exchange(true, std::memory_order_acq_rel)) {
+			pull_sem_.signal(1);
+		}
 		return true;
 	}
 	return false;

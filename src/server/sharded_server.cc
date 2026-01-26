@@ -29,12 +29,16 @@ int ShardedServer::Run() {
 	LOG_INFO("  - Cross-shard requests via TaskQueue message passing");
 
 	proactor_pool_ = std::make_unique<ProactorPool>(num_shards_, port_);
-	proactor_pool_->Start();
+	if (!proactor_pool_->Start()) {
+		LOG_ERROR("Failed to start ShardedServer on port `", port_);
+		Term();
+		return -1;
+	}
 
-	running_ = true;
+	running_.store(true, std::memory_order_release);
 	LOG_INFO("ShardedServer running. Press Ctrl+C to stop.");
 
-	while (running_) {
+	while (running_.load(std::memory_order_acquire)) {
 		photon::thread_usleep(100000);
 	}
 
@@ -43,11 +47,11 @@ int ShardedServer::Run() {
 }
 
 void ShardedServer::Stop() {
-	running_ = false;
+	running_.store(false, std::memory_order_release);
 }
 
 void ShardedServer::Term() {
-	running_ = false;
+	running_.store(false, std::memory_order_release);
 	if (proactor_pool_) {
 		proactor_pool_->Stop();
 		proactor_pool_->Join();

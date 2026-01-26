@@ -43,13 +43,16 @@ cmake --build .
 ### 运行服务器
 
 ```bash
-# 启动服务器（默认 6379 端口）
-./build/nano_redis_server --port=6379
+# 启动服务器（默认 9527 端口）
+./build/nano_redis_server --port=9527
 
 # 使用 redis-cli 测试
-redis-cli -p 6379 PING
-redis-cli -p 6379 SET key value
-redis-cli -p 6379 GET key
+redis-cli -p 9527 PING
+redis-cli -p 9527 SET key value
+redis-cli -p 9527 GET key
+
+# 简单压测
+redis-benchmark -p 9527 -t set,get,incr,lpush,lpop,sadd,spop,hset -q -n 100000 -c 100 -r 1000
 ```
 
 ### 运行测试
@@ -96,8 +99,9 @@ cd build && ctest
 
 ### 内存管理
 
-- **默认**: 系统 malloc/free
-- **可选**: mimalloc (Dragonfly 使用)
+- **默认**: mimalloc（本仓库自带 `third_party/mimalloc`，构建时静态链接并覆盖 `malloc/free/posix_memalign`）
+- **Photon 栈分配**: 默认会为 fiber/线程栈走 `posix_memalign + mprotect + madvise`；本项目默认启用 Photon 的 `use_pooled_stack_allocator` 来减少频繁栈分配/回收的系统调用开销
+- **可选**: 可用 `-DNANO_REDIS_USE_MIMALLOC=OFF` 回退到系统分配器（用于对比验证）
 - **设计**: 无需自定义 Arena，学习重点在架构而非内存优化
 
 ## 项目结构
@@ -260,7 +264,7 @@ ctest
 ### 使用 Redis-benchmark
 
 ```bash
-redis-benchmark -h 127.0.0.1 -p 6379 -t set,get -n 100000 -c 10
+redis-benchmark -h 127.0.0.1 -p 9527 -t set,get -n 100000 -c 10
 ```
 
 ## 开发规范

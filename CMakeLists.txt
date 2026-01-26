@@ -5,6 +5,28 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# -----------------------------------------------------------------------------
+# Build type defaults (single-config generators like Ninja/Makefiles)
+# -----------------------------------------------------------------------------
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE
+      RelWithDebInfo
+      CACHE STRING "Choose the type of build." FORCE)
+endif()
+set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
+
+option(NANO_REDIS_USE_MIMALLOC "Use mimalloc as the default allocator" ON)
+
+# Default debug symbols:
+# - Debug/RelWithDebInfo: ON
+# - Release/MinSizeRel: OFF (can be enabled explicitly)
+set(_nano_redis_debug_symbols_default ON)
+if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
+  set(_nano_redis_debug_symbols_default OFF)
+endif()
+option(NANO_REDIS_ENABLE_DEBUG_SYMBOLS "Enable debug symbols for better debugging"
+       ${_nano_redis_debug_symbols_default})
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -12,6 +34,20 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif()
 
 find_package(gflags REQUIRED)
+
+# -----------------------------------------------------------------------------
+# mimalloc (vendored) - default allocator
+# -----------------------------------------------------------------------------
+if(NANO_REDIS_USE_MIMALLOC)
+  # Keep mimalloc lean: no tests, static build, and override malloc entry points.
+  set(MI_BUILD_TESTS OFF CACHE BOOL "Build mimalloc tests" FORCE)
+  set(MI_BUILD_SHARED OFF CACHE BOOL "Build mimalloc shared library" FORCE)
+  set(MI_BUILD_STATIC ON CACHE BOOL "Build mimalloc static library" FORCE)
+  set(MI_BUILD_OBJECT OFF CACHE BOOL "Build mimalloc object library" FORCE)
+  set(MI_OVERRIDE ON CACHE BOOL "Override malloc/free symbols" FORCE)
+
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/mimalloc EXCLUDE_FROM_ALL)
+endif()
 
 # Save current CMAKE_CXX_FLAGS before adding photonlibos
 set(SAVED_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
@@ -36,7 +72,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/abseil-cpp ${CMAKE_BINA
 set(GTEST_ROOT "/usr/src/googletest" CACHE PATH "Path to googletest source")
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest EXCLUDE_FROM_ALL)
 
-# Header files (按功能组织）
+# Header files 
 set(REDIS_HEADERS
   include/protocol/resp_parser.h
   include/server/server.h
@@ -59,7 +95,7 @@ set(REDIS_HEADERS
   include/core/task_queue.h
 )
 
-# Source files (按功能组织）
+# Source files 
 set(REDIS_SOURCES
   src/server/server.cc
   src/server/sharded_server.cc
@@ -82,6 +118,14 @@ set(REDIS_SOURCES
 )
 
 add_library(nano_redis STATIC ${REDIS_SOURCES} ${REDIS_HEADERS})
+if(NANO_REDIS_ENABLE_DEBUG_SYMBOLS)
+  if(MSVC)
+    target_compile_options(nano_redis PUBLIC /Zi)
+    target_link_options(nano_redis PUBLIC /DEBUG)
+  else()
+    target_compile_options(nano_redis PUBLIC -g)
+  endif()
+endif()
 target_include_directories(nano_redis PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party
@@ -96,6 +140,9 @@ target_link_libraries(nano_redis PUBLIC
 # Server executable
 add_executable(nano_redis_server src/server_main.cc)
 target_link_libraries(nano_redis_server PRIVATE nano_redis gflags_static)
+if(NANO_REDIS_USE_MIMALLOC)
+  target_link_libraries(nano_redis_server PRIVATE mimalloc-static)
+endif()
 
 # Unit tests executable
 add_executable(unit_tests
@@ -121,6 +168,9 @@ target_link_libraries(unit_tests PRIVATE
   photon_shared
   gflags_static
 )
+if(NANO_REDIS_USE_MIMALLOC)
+  target_link_libraries(unit_tests PRIVATE mimalloc-static)
+endif()
 
 enable_testing()
 add_test(NAME unit_tests COMMAND unit_tests)

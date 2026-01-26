@@ -1,8 +1,15 @@
 #include "core/nano_obj.h"
 #include "core/util.h"
+#include "core/unordered_dense.h"
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <string>
+
+namespace {
+using SetType = ankerl::unordered_dense::set<std::string, ankerl::unordered_dense::hash<std::string>>;
+using HashType = ankerl::unordered_dense::map<std::string, std::string, ankerl::unordered_dense::hash<std::string>>;
+}  // namespace
 
 // ============================================================================
 // Tag & Flag Accessors
@@ -148,19 +155,19 @@ bool NanoObj::isString() const {
 }
 
 bool NanoObj::isHash() const {
-    return u_.robj.type_ == OBJ_HASH;
+    return getTag() == ROBJ_TAG && u_.robj.type_ == OBJ_HASH;
 }
 
 bool NanoObj::isSet() const {
-    return u_.robj.type_ == OBJ_SET;
+    return getTag() == ROBJ_TAG && u_.robj.type_ == OBJ_SET;
 }
 
 bool NanoObj::isList() const {
-    return u_.robj.type_ == OBJ_LIST;
+    return getTag() == ROBJ_TAG && u_.robj.type_ == OBJ_LIST;
 }
 
 bool NanoObj::isZset() const {
-    return u_.robj.type_ == OBJ_ZSET;
+    return getTag() == ROBJ_TAG && u_.robj.type_ == OBJ_ZSET;
 }
 
 // ============================================================================
@@ -259,10 +266,38 @@ void NanoObj::clear() {
     if (getTag() == SMALL_STR_TAG) {
         freeSmallString();
     } else if (getTag() == ROBJ_TAG) {
-        if (u_.robj.inner_obj_ != nullptr) {
-            ::operator delete(u_.robj.inner_obj_);
-        }
+        freeRobj();
     }
+}
+
+void NanoObj::freeRobj() {
+    if (getTag() != ROBJ_TAG) {
+        return;
+    }
+    if (u_.robj.inner_obj_ == nullptr) {
+        return;
+    }
+
+    // IMPORTANT:
+    // `inner_obj_` is allocated via `new T` in command implementations.
+    // We must use `delete` (not `::operator delete`) so that destructors run and
+    // internal allocations are released (otherwise we leak heavily under list/set/hash workloads).
+    switch (u_.robj.type_) {
+        case OBJ_LIST:
+            delete static_cast<std::deque<NanoObj>*>(u_.robj.inner_obj_);
+            break;
+        case OBJ_SET:
+            delete static_cast<SetType*>(u_.robj.inner_obj_);
+            break;
+        case OBJ_HASH:
+            delete static_cast<HashType*>(u_.robj.inner_obj_);
+            break;
+        default:
+            // Fallback for other object types not yet implemented here.
+            ::operator delete(u_.robj.inner_obj_);
+            break;
+    }
+    u_.robj.inner_obj_ = nullptr;
 }
 
 void NanoObj::setString(std::string_view str) {
@@ -271,6 +306,49 @@ void NanoObj::setString(std::string_view str) {
     } else {
         setSmallString(str);
     }
+}
+
+char* NanoObj::PrepareStringBuffer(size_t len) {
+    clear();
+    setFlag(0);
+
+    if (len <= kInlineLen) {
+        setTag(static_cast<uint8_t>(len));
+        return u_.data;
+    }
+
+    u_.small_str.length = static_cast<uint16_t>(len);
+    std::memset(u_.small_str.prefix, 0, sizeof(u_.small_str.prefix));
+    u_.small_str.ptr = static_cast<char*>(::operator new(len));
+    setTag(SMALL_STR_TAG);
+    return u_.small_str.ptr;
+}
+
+void NanoObj::FinalizePreparedString() {
+    if (getTag() != SMALL_STR_TAG) {
+        return;
+    }
+
+    size_t prefix_len = std::min(static_cast<size_t>(u_.small_str.length), sizeof(u_.small_str.prefix));
+    if (prefix_len == 0) {
+        return;
+    }
+    std::memcpy(u_.small_str.prefix, u_.small_str.ptr, prefix_len);
+}
+
+bool NanoObj::MaybeConvertToInt() {
+    std::string_view sv = getRawStringView();
+    if (sv.empty() || sv.size() > 20) {
+        return false;
+    }
+
+    int64_t ival;
+    if (!string2ll(sv.data(), sv.size(), &ival)) {
+        return false;
+    }
+
+    setInt(ival);
+    return true;
 }
 
 void NanoObj::setInt(int64_t val) {
@@ -351,18 +429,6 @@ bool NanoObj::operator==(const NanoObj& other) const {
         std::string_view this_str = getRawStringView();
         std::string_view other_str = other.getRawStringView();
         return this_str == other_str;
-    }
-
-    if (this_tag == INT_TAG && (other_tag <= kInlineLen || other_tag == SMALL_STR_TAG)) {
-        std::string other_str_val = other.toString();
-        std::string this_str_val = toString();
-        return this_str_val == other_str_val;
-    }
-
-    if (other_tag == INT_TAG && (this_tag <= kInlineLen || this_tag == SMALL_STR_TAG)) {
-        std::string this_str_val = toString();
-        std::string other_str_val = other.toString();
-        return this_str_val == other_str_val;
     }
 
     return false;
