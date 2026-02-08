@@ -53,6 +53,8 @@ endif()
 set(SAVED_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
 
 set(PHOTON_ENABLE_URING ON CACHE BOOL "enable io_uring function" FORCE)
+set(PHOTON_CXX_STANDARD "17" CACHE STRING "C++ standard" FORCE)
+set(PHOTON_ENABLE_CACHE OFF CACHE BOOL "disable photon cache module (not needed by nano_redis)" FORCE)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/photonlibos EXCLUDE_FROM_ALL)
 
 # Restore CMAKE_CXX_FLAGS and disable Werror for photon targets

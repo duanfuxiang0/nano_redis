@@ -2,15 +2,14 @@
 
 #include <photon/common/alog.h>
 
-__thread EngineShard* EngineShard::tlocal_shard_ = nullptr;
+__thread EngineShard* EngineShard::tlocal_shard = nullptr;
 
-EngineShard::EngineShard(size_t shard_id)
-	: shard_id_(shard_id), db_(new Database()) {
+EngineShard::EngineShard(size_t shard_id_value) : shard_id(shard_id_value), db(std::make_unique<Database>()) {
 }
 
 EngineShard::~EngineShard() = default;
 
 void EngineShard::InitializeInThread() {
-	tlocal_shard_ = this;
-	LOG_INFO("EngineShard ` initialized in thread", shard_id_);
+	tlocal_shard = this;
+	LOG_INFO("EngineShard initialized in thread", shard_id);
 }

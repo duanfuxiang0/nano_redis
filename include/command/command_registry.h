@@ -15,11 +15,11 @@ public:
 	using CommandHandler = std::function<std::string(const std::vector<NanoObj>&)>;
 	using CommandHandlerWithContext = std::function<std::string(const std::vector<NanoObj>&, CommandContext*)>;
 
-	static CommandRegistry& instance();
+	static CommandRegistry& Instance();
 
-	void register_command(const std::string& name, CommandHandler handler);
-	void register_command_with_context(const std::string& name, CommandHandlerWithContext handler);
-	std::string execute(const std::vector<NanoObj>& args, CommandContext* ctx = nullptr);
+	void RegisterCommand(const std::string& name, CommandHandler handler);
+	void RegisterCommandWithContext(const std::string& name, CommandHandlerWithContext handler);
+	std::string Execute(const std::vector<NanoObj>& args, CommandContext* ctx = nullptr);
 
 private:
 	CommandRegistry() = default;
@@ -39,7 +39,7 @@ private:
 		}
 
 		size_t operator()(const std::string& s) const noexcept {
-			return (*this)(absl::string_view{s});
+			return (*this)(absl::string_view {s});
 		}
 	};
 
@@ -47,7 +47,7 @@ private:
 		using is_transparent = void;
 
 		bool operator()(const std::string& a, const std::string& b) const noexcept {
-			return (*this)(absl::string_view{a}, absl::string_view{b});
+			return (*this)(absl::string_view {a}, absl::string_view {b});
 		}
 
 		bool operator()(absl::string_view a, absl::string_view b) const noexcept {
@@ -67,15 +67,15 @@ private:
 		}
 
 		bool operator()(const std::string& a, absl::string_view b) const noexcept {
-			return (*this)(absl::string_view{a}, b);
+			return (*this)(absl::string_view {a}, b);
 		}
 
 		bool operator()(absl::string_view a, const std::string& b) const noexcept {
-			return (*this)(a, absl::string_view{b});
+			return (*this)(a, absl::string_view {b});
 		}
 	};
 
-	absl::flat_hash_map<std::string, CommandHandler, CaseInsensitiveHash, CaseInsensitiveEq> handlers_;
+	absl::flat_hash_map<std::string, CommandHandler, CaseInsensitiveHash, CaseInsensitiveEq> handlers;
 	absl::flat_hash_map<std::string, CommandHandlerWithContext, CaseInsensitiveHash, CaseInsensitiveEq>
-		handlers_with_context_;
+	    handlers_with_context;
 };

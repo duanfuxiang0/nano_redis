@@ -27,22 +27,35 @@ bool AllKeysSameShard(const std::vector<NanoObj>& args, size_t first_key_index, 
 	}
 	return true;
 }
-}  // namespace
+} // namespace
 
 void SetFamily::Register(CommandRegistry* registry) {
-	registry->register_command_with_context("SADD", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SAdd(args, ctx); });
-	registry->register_command_with_context("SREM", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SRem(args, ctx); });
-	registry->register_command_with_context("SPOP", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SPop(args, ctx); });
-	registry->register_command_with_context("SMEMBERS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SMembers(args, ctx); });
-	registry->register_command_with_context("SCARD", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SCard(args, ctx); });
-	registry->register_command_with_context("SISMEMBER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SIsMember(args, ctx); });
-	registry->register_command_with_context("SMISMEMBER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SMIsMember(args, ctx); });
-	registry->register_command_with_context("SINTER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SInter(args, ctx); });
-	registry->register_command_with_context("SUNION", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SUnion(args, ctx); });
-	registry->register_command_with_context("SDIFF", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SDiff(args, ctx); });
-	registry->register_command_with_context("SSCAN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SScan(args, ctx); });
-	registry->register_command_with_context("SRANDMEMBER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SRandMember(args, ctx); });
-	registry->register_command_with_context("SMOVE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SMove(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "SADD", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SAdd(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "SREM", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SRem(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "SPOP", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SPop(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "SMEMBERS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SMembers(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "SCARD", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SCard(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "SISMEMBER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SIsMember(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "SMISMEMBER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SMIsMember(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "SINTER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SInter(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "SUNION", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SUnion(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "SDIFF", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SDiff(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "SSCAN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SScan(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "SRANDMEMBER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SRandMember(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "SMOVE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SMove(args, ctx); });
 }
 
 std::string SetFamily::SAdd(const std::vector<NanoObj>& args, CommandContext* ctx) {
@@ -221,7 +234,7 @@ std::string SetFamily::SMIsMember(const std::vector<NanoObj>& args, CommandConte
 	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
-	std::string result = RESPParser::make_array(args.size() - 2);
+	std::string result = RESPParser::make_array(static_cast<int64_t>(args.size() - 2));
 
 	if (set_obj == nullptr || !set_obj->isSet()) {
 		for (size_t i = 2; i < args.size(); i++) {
@@ -437,7 +450,7 @@ std::string SetFamily::SRandMember(const std::vector<NanoObj>& args, CommandCont
 	for (int64_t i = 0; i < count && !members.empty(); i++) {
 		size_t offset = std::rand() % members.size();
 		result += RESPParser::make_bulk_string(members[offset]);
-		members.erase(members.begin() + offset);
+		members.erase(members.begin() + static_cast<std::vector<std::string>::difference_type>(offset));
 	}
 
 	return result;

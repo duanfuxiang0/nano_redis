@@ -1,34 +1,37 @@
----
 BasedOnStyle: LLVM
+Language: Cpp
+
 SortIncludes: false
+IncludeBlocks: Regroup
+
 TabWidth: 4
 IndentWidth: 4
-ColumnLimit: 120
-AllowShortFunctionsOnASingleLine: false
----
 UseTab: ForIndentation
+ColumnLimit: 120
+
+AllowShortFunctionsOnASingleLine: false
+AllowShortLambdasOnASingleLine: Inline
+AllowShortLoopsOnASingleLine: false
+
 DerivePointerAlignment: false
 PointerAlignment: Left
+
 AlignConsecutiveMacros: true
 AlignTrailingComments: true
+AlignAfterOpenBracket: Align
+
 AllowAllArgumentsOnNextLine: true
 AllowAllConstructorInitializersOnNextLine: true
 AllowAllParametersOfDeclarationOnNextLine: true
-AlignAfterOpenBracket: Align
+
 SpaceBeforeCpp11BracedList: true
 SpaceBeforeCtorInitializerColon: true
 SpaceBeforeInheritanceColon: true
+
 SpacesInAngles: false
 SpacesInCStyleCastParentheses: false
 SpacesInConditionalStatement: false
-AllowShortLambdasOnASingleLine: Inline
-AllowShortLoopsOnASingleLine: false
+
 AlwaysBreakTemplateDeclarations: Yes
-IncludeBlocks: Regroup
-Language: Cpp
 AccessModifierOffset: -4
 KeepEmptyLinesAtTheStartOfBlocks: false
----
-Language: Java
-SpaceAfterCStyleCast: true
----

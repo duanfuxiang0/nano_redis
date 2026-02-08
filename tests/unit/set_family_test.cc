@@ -7,21 +7,17 @@
 class SetFamilyTest : public ::testing::Test {
 protected:
 	void SetUp() override {
-		db_ = std::make_unique<Database>();
+		db = std::make_unique<Database>();
 	}
 
-	std::unique_ptr<Database> db_;
+	std::unique_ptr<Database> db;
 };
 
 TEST_F(SetFamilyTest, SAddAndSMembers) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("SADD"),
-		NanoObj::fromKey("myset"),
-		NanoObj::fromKey("member1"),
-		NanoObj::fromKey("member2")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("SADD"), NanoObj::fromKey("myset"), NanoObj::fromKey("member1"),
+	                             NanoObj::fromKey("member2")};
 
 	std::string result = SetFamily::SAdd(args, &ctx);
 	EXPECT_EQ(result, ":2\r\n");
@@ -32,14 +28,10 @@ TEST_F(SetFamilyTest, SAddAndSMembers) {
 }
 
 TEST_F(SetFamilyTest, SAddDuplicate) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("SADD"),
-		NanoObj::fromKey("myset"),
-		NanoObj::fromKey("member1"),
-		NanoObj::fromKey("member1")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("SADD"), NanoObj::fromKey("myset"), NanoObj::fromKey("member1"),
+	                             NanoObj::fromKey("member1")};
 
 	std::string result = SetFamily::SAdd(args, &ctx);
 	EXPECT_EQ(result, ":1\r\n");
@@ -50,22 +42,14 @@ TEST_F(SetFamilyTest, SAddDuplicate) {
 }
 
 TEST_F(SetFamilyTest, SRem) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("SADD"),
-		NanoObj::fromKey("myset"),
-		NanoObj::fromKey("member1"),
-		NanoObj::fromKey("member2")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("SADD"), NanoObj::fromKey("myset"), NanoObj::fromKey("member1"),
+	                             NanoObj::fromKey("member2")};
 
 	SetFamily::SAdd(args, &ctx);
 
-	args = {
-		NanoObj::fromKey("SREM"),
-		NanoObj::fromKey("myset"),
-		NanoObj::fromKey("member1")
-	};
+	args = {NanoObj::fromKey("SREM"), NanoObj::fromKey("myset"), NanoObj::fromKey("member1")};
 	std::string result = SetFamily::SRem(args, &ctx);
 	EXPECT_EQ(result, ":1\r\n");
 
@@ -75,14 +59,10 @@ TEST_F(SetFamilyTest, SRem) {
 }
 
 TEST_F(SetFamilyTest, SPop) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("SADD"),
-		NanoObj::fromKey("myset"),
-		NanoObj::fromKey("member1"),
-		NanoObj::fromKey("member2")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("SADD"), NanoObj::fromKey("myset"), NanoObj::fromKey("member1"),
+	                             NanoObj::fromKey("member2")};
 
 	SetFamily::SAdd(args, &ctx);
 
@@ -96,15 +76,10 @@ TEST_F(SetFamilyTest, SPop) {
 }
 
 TEST_F(SetFamilyTest, SCard) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("SADD"),
-		NanoObj::fromKey("myset"),
-		NanoObj::fromKey("member1"),
-		NanoObj::fromKey("member2"),
-		NanoObj::fromKey("member3")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("SADD"), NanoObj::fromKey("myset"), NanoObj::fromKey("member1"),
+	                             NanoObj::fromKey("member2"), NanoObj::fromKey("member3")};
 
 	SetFamily::SAdd(args, &ctx);
 
@@ -114,117 +89,69 @@ TEST_F(SetFamilyTest, SCard) {
 }
 
 TEST_F(SetFamilyTest, SIsMember) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("SADD"),
-		NanoObj::fromKey("myset"),
-		NanoObj::fromKey("member1"),
-		NanoObj::fromKey("member2")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("SADD"), NanoObj::fromKey("myset"), NanoObj::fromKey("member1"),
+	                             NanoObj::fromKey("member2")};
 
 	SetFamily::SAdd(args, &ctx);
 
-	args = {
-		NanoObj::fromKey("SISMEMBER"),
-		NanoObj::fromKey("myset"),
-		NanoObj::fromKey("member1")
-	};
+	args = {NanoObj::fromKey("SISMEMBER"), NanoObj::fromKey("myset"), NanoObj::fromKey("member1")};
 	std::string result = SetFamily::SIsMember(args, &ctx);
 	EXPECT_EQ(result, ":1\r\n");
 
-	args = {
-		NanoObj::fromKey("SISMEMBER"),
-		NanoObj::fromKey("myset"),
-		NanoObj::fromKey("nonexistent")
-	};
+	args = {NanoObj::fromKey("SISMEMBER"), NanoObj::fromKey("myset"), NanoObj::fromKey("nonexistent")};
 	result = SetFamily::SIsMember(args, &ctx);
 	EXPECT_EQ(result, ":0\r\n");
 }
 
 TEST_F(SetFamilyTest, SMIsMember) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("SADD"),
-		NanoObj::fromKey("myset"),
-		NanoObj::fromKey("member1"),
-		NanoObj::fromKey("member2"),
-		NanoObj::fromKey("member3")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("SADD"), NanoObj::fromKey("myset"), NanoObj::fromKey("member1"),
+	                             NanoObj::fromKey("member2"), NanoObj::fromKey("member3")};
 
 	SetFamily::SAdd(args, &ctx);
 
-	args = {
-		NanoObj::fromKey("SMISMEMBER"),
-		NanoObj::fromKey("myset"),
-		NanoObj::fromKey("member1"),
-		NanoObj::fromKey("member2"),
-		NanoObj::fromKey("nonexistent")
-	};
+	args = {NanoObj::fromKey("SMISMEMBER"), NanoObj::fromKey("myset"), NanoObj::fromKey("member1"),
+	        NanoObj::fromKey("member2"), NanoObj::fromKey("nonexistent")};
 	std::string result = SetFamily::SMIsMember(args, &ctx);
 	EXPECT_EQ(result, "*3\r\n:1\r\n:1\r\n:0\r\n");
 }
 
 TEST_F(SetFamilyTest, SInter) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("SADD"),
-		NanoObj::fromKey("set1"),
-		NanoObj::fromKey("member1"),
-		NanoObj::fromKey("member2"),
-		NanoObj::fromKey("member3")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("SADD"), NanoObj::fromKey("set1"), NanoObj::fromKey("member1"),
+	                             NanoObj::fromKey("member2"), NanoObj::fromKey("member3")};
 
 	SetFamily::SAdd(args, &ctx);
 
-	args = {
-		NanoObj::fromKey("SADD"),
-		NanoObj::fromKey("set2"),
-		NanoObj::fromKey("member2"),
-		NanoObj::fromKey("member3"),
-		NanoObj::fromKey("member4")
-	};
+	args = {NanoObj::fromKey("SADD"), NanoObj::fromKey("set2"), NanoObj::fromKey("member2"),
+	        NanoObj::fromKey("member3"), NanoObj::fromKey("member4")};
 
 	SetFamily::SAdd(args, &ctx);
 
-	args = {
-		NanoObj::fromKey("SINTER"),
-		NanoObj::fromKey("set1"),
-		NanoObj::fromKey("set2")
-	};
+	args = {NanoObj::fromKey("SINTER"), NanoObj::fromKey("set1"), NanoObj::fromKey("set2")};
 	std::string result = SetFamily::SInter(args, &ctx);
 	EXPECT_TRUE(result.find("member2") != std::string::npos);
 	EXPECT_TRUE(result.find("member3") != std::string::npos);
 }
 
 TEST_F(SetFamilyTest, SUnion) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("SADD"),
-		NanoObj::fromKey("set1"),
-		NanoObj::fromKey("member1"),
-		NanoObj::fromKey("member2")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("SADD"), NanoObj::fromKey("set1"), NanoObj::fromKey("member1"),
+	                             NanoObj::fromKey("member2")};
 
 	SetFamily::SAdd(args, &ctx);
 
-	args = {
-		NanoObj::fromKey("SADD"),
-		NanoObj::fromKey("set2"),
-		NanoObj::fromKey("member2"),
-		NanoObj::fromKey("member3")
-	};
+	args = {NanoObj::fromKey("SADD"), NanoObj::fromKey("set2"), NanoObj::fromKey("member2"),
+	        NanoObj::fromKey("member3")};
 
 	SetFamily::SAdd(args, &ctx);
 
-	args = {
-		NanoObj::fromKey("SUNION"),
-		NanoObj::fromKey("set1"),
-		NanoObj::fromKey("set2")
-	};
+	args = {NanoObj::fromKey("SUNION"), NanoObj::fromKey("set1"), NanoObj::fromKey("set2")};
 	std::string result = SetFamily::SUnion(args, &ctx);
 	EXPECT_TRUE(result.find("member1") != std::string::npos);
 	EXPECT_TRUE(result.find("member2") != std::string::npos);
@@ -232,32 +159,19 @@ TEST_F(SetFamilyTest, SUnion) {
 }
 
 TEST_F(SetFamilyTest, SDiff) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("SADD"),
-		NanoObj::fromKey("set1"),
-		NanoObj::fromKey("member1"),
-		NanoObj::fromKey("member2"),
-		NanoObj::fromKey("member3")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("SADD"), NanoObj::fromKey("set1"), NanoObj::fromKey("member1"),
+	                             NanoObj::fromKey("member2"), NanoObj::fromKey("member3")};
 
 	SetFamily::SAdd(args, &ctx);
 
-	args = {
-		NanoObj::fromKey("SADD"),
-		NanoObj::fromKey("set2"),
-		NanoObj::fromKey("member2"),
-		NanoObj::fromKey("member4")
-	};
+	args = {NanoObj::fromKey("SADD"), NanoObj::fromKey("set2"), NanoObj::fromKey("member2"),
+	        NanoObj::fromKey("member4")};
 
 	SetFamily::SAdd(args, &ctx);
 
-	args = {
-		NanoObj::fromKey("SDIFF"),
-		NanoObj::fromKey("set1"),
-		NanoObj::fromKey("set2")
-	};
+	args = {NanoObj::fromKey("SDIFF"), NanoObj::fromKey("set1"), NanoObj::fromKey("set2")};
 	std::string result = SetFamily::SDiff(args, &ctx);
 	EXPECT_TRUE(result.find("member1") != std::string::npos);
 	EXPECT_TRUE(result.find("member3") != std::string::npos);
@@ -265,15 +179,10 @@ TEST_F(SetFamilyTest, SDiff) {
 }
 
 TEST_F(SetFamilyTest, SRandMember) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("SADD"),
-		NanoObj::fromKey("myset"),
-		NanoObj::fromKey("member1"),
-		NanoObj::fromKey("member2"),
-		NanoObj::fromKey("member3")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("SADD"), NanoObj::fromKey("myset"), NanoObj::fromKey("member1"),
+	                             NanoObj::fromKey("member2"), NanoObj::fromKey("member3")};
 
 	SetFamily::SAdd(args, &ctx);
 
@@ -283,23 +192,14 @@ TEST_F(SetFamilyTest, SRandMember) {
 }
 
 TEST_F(SetFamilyTest, SMove) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("SADD"),
-		NanoObj::fromKey("set1"),
-		NanoObj::fromKey("member1"),
-		NanoObj::fromKey("member2")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("SADD"), NanoObj::fromKey("set1"), NanoObj::fromKey("member1"),
+	                             NanoObj::fromKey("member2")};
 
 	SetFamily::SAdd(args, &ctx);
 
-	args = {
-		NanoObj::fromKey("SMOVE"),
-		NanoObj::fromKey("set1"),
-		NanoObj::fromKey("set2"),
-		NanoObj::fromKey("member1")
-	};
+	args = {NanoObj::fromKey("SMOVE"), NanoObj::fromKey("set1"), NanoObj::fromKey("set2"), NanoObj::fromKey("member1")};
 	std::string result = SetFamily::SMove(args, &ctx);
 	EXPECT_EQ(result, ":1\r\n");
 
@@ -313,7 +213,7 @@ TEST_F(SetFamilyTest, SMove) {
 }
 
 TEST_F(SetFamilyTest, ErrorCases) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
 	std::vector<NanoObj> args;
 	std::string result = SetFamily::SAdd(args, &ctx);

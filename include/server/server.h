@@ -19,13 +19,14 @@ public:
 	RedisServer();
 	~RedisServer();
 
-	int run(int port);
-	void term();
+	int Run(int port);
+	void Term();
 
 private:
-	std::unique_ptr<photon::net::ISocketServer> server_;
-	Database store_;
+	std::unique_ptr<photon::net::ISocketServer> server;
+	Database store;
+	bool command_families_registered = false;
 
-	int handle_client(photon::net::ISocketStream* stream);
-	std::string process_command(const std::vector<NanoObj>& args);
+	int HandleClient(photon::net::ISocketStream* stream);
+	std::string ProcessCommand(const std::vector<NanoObj>& args);
 };

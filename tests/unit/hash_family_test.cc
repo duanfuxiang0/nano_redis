@@ -7,21 +7,17 @@
 class HashFamilyTest : public ::testing::Test {
 protected:
 	void SetUp() override {
-		db_ = std::make_unique<Database>();
+		db = std::make_unique<Database>();
 	}
 
-	std::unique_ptr<Database> db_;
+	std::unique_ptr<Database> db;
 };
 
 TEST_F(HashFamilyTest, HSetAndGet) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("HSET"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("field1"),
-		NanoObj::fromKey("value1")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("HSET"), NanoObj::fromKey("myhash"), NanoObj::fromKey("field1"),
+	                             NanoObj::fromKey("value1")};
 
 	std::string result = HashFamily::HSet(args, &ctx);
 	EXPECT_EQ(result, "+OK\r\n");
@@ -32,60 +28,38 @@ TEST_F(HashFamilyTest, HSetAndGet) {
 }
 
 TEST_F(HashFamilyTest, HGetNonExistent) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("HGET"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("nonexistent")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("HGET"), NanoObj::fromKey("myhash"), NanoObj::fromKey("nonexistent")};
 
 	std::string result = HashFamily::HGet(args, &ctx);
 	EXPECT_EQ(result, "$-1\r\n");
 }
 
 TEST_F(HashFamilyTest, HMSetAndGet) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("HMSET"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("field1"),
-		NanoObj::fromKey("value1"),
-		NanoObj::fromKey("field2"),
-		NanoObj::fromKey("value2")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("HMSET"),  NanoObj::fromKey("myhash"), NanoObj::fromKey("field1"),
+	                             NanoObj::fromKey("value1"), NanoObj::fromKey("field2"), NanoObj::fromKey("value2")};
 
 	std::string result = HashFamily::HMSet(args, &ctx);
 	EXPECT_EQ(result, "+OK\r\n");
 
-	args = {
-		NanoObj::fromKey("HMGET"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("field1"),
-		NanoObj::fromKey("field2")
-	};
+	args = {NanoObj::fromKey("HMGET"), NanoObj::fromKey("myhash"), NanoObj::fromKey("field1"),
+	        NanoObj::fromKey("field2")};
 	result = HashFamily::HMGet(args, &ctx);
 	EXPECT_EQ(result, "*2\r\n$6\r\nvalue1\r\n$6\r\nvalue2\r\n");
 }
 
 TEST_F(HashFamilyTest, HDel) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("HSET"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("field1"),
-		NanoObj::fromKey("value1")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("HSET"), NanoObj::fromKey("myhash"), NanoObj::fromKey("field1"),
+	                             NanoObj::fromKey("value1")};
 
 	HashFamily::HSet(args, &ctx);
 
-	args = {
-		NanoObj::fromKey("HDEL"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("field1")
-	};
+	args = {NanoObj::fromKey("HDEL"), NanoObj::fromKey("myhash"), NanoObj::fromKey("field1")};
 	std::string result = HashFamily::HDel(args, &ctx);
 	EXPECT_EQ(result, ":1\r\n");
 
@@ -94,45 +68,27 @@ TEST_F(HashFamilyTest, HDel) {
 }
 
 TEST_F(HashFamilyTest, HExists) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("HSET"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("field1"),
-		NanoObj::fromKey("value1")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("HSET"), NanoObj::fromKey("myhash"), NanoObj::fromKey("field1"),
+	                             NanoObj::fromKey("value1")};
 
 	HashFamily::HSet(args, &ctx);
 
-	args = {
-		NanoObj::fromKey("HEXISTS"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("field1")
-	};
+	args = {NanoObj::fromKey("HEXISTS"), NanoObj::fromKey("myhash"), NanoObj::fromKey("field1")};
 	std::string result = HashFamily::HExists(args, &ctx);
 	EXPECT_EQ(result, ":1\r\n");
 
-	args = {
-		NanoObj::fromKey("HEXISTS"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("nonexistent")
-	};
+	args = {NanoObj::fromKey("HEXISTS"), NanoObj::fromKey("myhash"), NanoObj::fromKey("nonexistent")};
 	result = HashFamily::HExists(args, &ctx);
 	EXPECT_EQ(result, ":0\r\n");
 }
 
 TEST_F(HashFamilyTest, HLen) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("HSET"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("field1"),
-		NanoObj::fromKey("value1"),
-		NanoObj::fromKey("field2"),
-		NanoObj::fromKey("value2")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("HSET"),   NanoObj::fromKey("myhash"), NanoObj::fromKey("field1"),
+	                             NanoObj::fromKey("value1"), NanoObj::fromKey("field2"), NanoObj::fromKey("value2")};
 
 	HashFamily::HSet(args, &ctx);
 
@@ -142,16 +98,10 @@ TEST_F(HashFamilyTest, HLen) {
 }
 
 TEST_F(HashFamilyTest, HKeys) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("HSET"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("field1"),
-		NanoObj::fromKey("value1"),
-		NanoObj::fromKey("field2"),
-		NanoObj::fromKey("value2")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("HSET"),   NanoObj::fromKey("myhash"), NanoObj::fromKey("field1"),
+	                             NanoObj::fromKey("value1"), NanoObj::fromKey("field2"), NanoObj::fromKey("value2")};
 
 	HashFamily::HSet(args, &ctx);
 
@@ -162,16 +112,10 @@ TEST_F(HashFamilyTest, HKeys) {
 }
 
 TEST_F(HashFamilyTest, HVals) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("HSET"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("field1"),
-		NanoObj::fromKey("value1"),
-		NanoObj::fromKey("field2"),
-		NanoObj::fromKey("value2")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("HSET"),   NanoObj::fromKey("myhash"), NanoObj::fromKey("field1"),
+	                             NanoObj::fromKey("value1"), NanoObj::fromKey("field2"), NanoObj::fromKey("value2")};
 
 	HashFamily::HSet(args, &ctx);
 
@@ -182,16 +126,10 @@ TEST_F(HashFamilyTest, HVals) {
 }
 
 TEST_F(HashFamilyTest, HGetAll) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("HSET"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("field1"),
-		NanoObj::fromKey("value1"),
-		NanoObj::fromKey("field2"),
-		NanoObj::fromKey("value2")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("HSET"),   NanoObj::fromKey("myhash"), NanoObj::fromKey("field1"),
+	                             NanoObj::fromKey("value1"), NanoObj::fromKey("field2"), NanoObj::fromKey("value2")};
 
 	HashFamily::HSet(args, &ctx);
 
@@ -204,67 +142,41 @@ TEST_F(HashFamilyTest, HGetAll) {
 }
 
 TEST_F(HashFamilyTest, HIncrBy) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("HSET"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("counter"),
-		NanoObj::fromKey("10")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("HSET"), NanoObj::fromKey("myhash"), NanoObj::fromKey("counter"),
+	                             NanoObj::fromKey("10")};
 
 	HashFamily::HSet(args, &ctx);
 
-	args = {
-		NanoObj::fromKey("HINCRBY"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("counter"),
-		NanoObj::fromKey("5")
-	};
+	args = {NanoObj::fromKey("HINCRBY"), NanoObj::fromKey("myhash"), NanoObj::fromKey("counter"),
+	        NanoObj::fromKey("5")};
 	std::string result = HashFamily::HIncrBy(args, &ctx);
 	EXPECT_EQ(result, "$2\r\n15\r\n");
 
-	args = {
-		NanoObj::fromKey("HGET"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("counter")
-	};
+	args = {NanoObj::fromKey("HGET"), NanoObj::fromKey("myhash"), NanoObj::fromKey("counter")};
 	result = HashFamily::HGet(args, &ctx);
 	EXPECT_EQ(result, "$2\r\n15\r\n");
 }
 
 TEST_F(HashFamilyTest, HStrLen) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("HSET"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("field1"),
-		NanoObj::fromKey("value1")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("HSET"), NanoObj::fromKey("myhash"), NanoObj::fromKey("field1"),
+	                             NanoObj::fromKey("value1")};
 
 	HashFamily::HSet(args, &ctx);
 
-	args = {
-		NanoObj::fromKey("HSTRLEN"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("field1")
-	};
+	args = {NanoObj::fromKey("HSTRLEN"), NanoObj::fromKey("myhash"), NanoObj::fromKey("field1")};
 	std::string result = HashFamily::HStrLen(args, &ctx);
 	EXPECT_EQ(result, ":6\r\n");
 }
 
 TEST_F(HashFamilyTest, HRandField) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("HSET"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("field1"),
-		NanoObj::fromKey("value1"),
-		NanoObj::fromKey("field2"),
-		NanoObj::fromKey("value2")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("HSET"),   NanoObj::fromKey("myhash"), NanoObj::fromKey("field1"),
+	                             NanoObj::fromKey("value1"), NanoObj::fromKey("field2"), NanoObj::fromKey("value2")};
 
 	HashFamily::HSet(args, &ctx);
 
@@ -274,31 +186,21 @@ TEST_F(HashFamilyTest, HRandField) {
 }
 
 TEST_F(HashFamilyTest, HScan) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
-	std::vector<NanoObj> args = {
-		NanoObj::fromKey("HSET"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("field1"),
-		NanoObj::fromKey("value1"),
-		NanoObj::fromKey("field2"),
-		NanoObj::fromKey("value2")
-	};
+	std::vector<NanoObj> args = {NanoObj::fromKey("HSET"),   NanoObj::fromKey("myhash"), NanoObj::fromKey("field1"),
+	                             NanoObj::fromKey("value1"), NanoObj::fromKey("field2"), NanoObj::fromKey("value2")};
 
 	HashFamily::HSet(args, &ctx);
 
-	args = {
-		NanoObj::fromKey("HSCAN"),
-		NanoObj::fromKey("myhash"),
-		NanoObj::fromKey("0")
-	};
+	args = {NanoObj::fromKey("HSCAN"), NanoObj::fromKey("myhash"), NanoObj::fromKey("0")};
 	std::string result = HashFamily::HScan(args, &ctx);
 	EXPECT_TRUE(result.find("field1") != std::string::npos);
 	EXPECT_TRUE(result.find("field2") != std::string::npos);
 }
 
 TEST_F(HashFamilyTest, ErrorCases) {
-	CommandContext ctx(db_.get(), 0);
+	CommandContext ctx(db.get(), 0);
 
 	std::vector<NanoObj> args;
 	std::string result = HashFamily::HSet(args, &ctx);

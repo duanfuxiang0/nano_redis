@@ -34,5 +34,5 @@ public:
 
 private:
 	static int64_t ParseInt(const std::string& s);
-	static int AdjustIndex(int index, int length);
+	static int64_t AdjustIndex(int64_t index, int64_t length);
 };

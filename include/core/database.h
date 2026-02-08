@@ -23,7 +23,7 @@ public:
 	size_t KeyCount() const;
 	bool Select(size_t db_index);
 	size_t CurrentDB() const {
-		return current_db_;
+		return current_db;
 	}
 	void ClearCurrentDB();
 	void ClearAll();
@@ -36,6 +36,6 @@ public:
 
 private:
 	using Table = DashTable<NanoObj, NanoObj>;
-	std::array<std::unique_ptr<Table>, kNumDBs> tables_;
-	size_t current_db_ = 0;
+	std::array<std::unique_ptr<Table>, kNumDBs> tables;
+	size_t current_db = 0;
 };

@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
-#include <thread>
-#include <chrono>
+#include <cstdint>
+#include <string>
+#include <vector>
 #include "command/string_family.h"
 #include "command/command_registry.h"
 #include "core/nano_obj.h"
@@ -10,68 +11,63 @@
 #include "server/engine_shard.h"
 #include "server/sharding.h"
 #include "protocol/resp_parser.h"
-#include <vector>
-#include <string>
 
 class MultiShardIntegrationTest : public ::testing::Test {
 protected:
 	void SetUp() override {
-		registry_ = &CommandRegistry::instance();
-		StringFamily::Register(registry_);
+		registry = &CommandRegistry::Instance();
+		StringFamily::Register(registry);
 	}
 
 	std::string ExecuteCommand(const std::string& cmd, const std::vector<std::string>& args, CommandContext* ctx) {
 		std::vector<NanoObj> full_args = {NanoObj::fromKey(cmd)};
+		full_args.reserve(1 + args.size());
 		for (const auto& arg : args) {
-			full_args.push_back(NanoObj::fromKey(arg));
+			full_args.emplace_back(NanoObj::fromKey(arg));
 		}
-		return registry_->execute(full_args, ctx);
+		return registry->Execute(full_args, ctx);
 	}
 
+	// Simple RESP array parser for test assertions. Extracts bulk strings from arrays.
+	// Null bulk strings ($-1) and errors (-ERR) are represented as "(nil)".
 	void ParseRESPArray(const std::string& resp, std::vector<std::string>& values) {
 		values.clear();
-		size_t pos = resp.find('\n', 0);
-		if (pos == std::string::npos) return;
-
-		size_t count = 0;
-		try {
-			size_t star_pos = resp.find('*');
-			if (star_pos != std::string::npos) {
-				count = std::stoul(resp.substr(star_pos + 1));
-			}
-		} catch (...) {
+		if (resp.empty() || resp[0] != '*') {
 			return;
 		}
 
-		pos++;
-		for (size_t i = 0; i < count && pos < resp.size(); ++i) {
-			if (resp[pos] == '\n') pos++;
-			if (resp[pos] == '$') {
-				size_t dollar_pos = pos;
-				size_t newline_pos = resp.find('\n', dollar_pos);
-				if (newline_pos == std::string::npos) break;
-
-				size_t len_pos = dollar_pos + 1;
-				try {
-			size_t len = std::stoul(resp.substr(len_pos, newline_pos - len_pos));
-			pos = newline_pos + 1;
-			if (len == (size_t)-1) {
-				values.push_back("(nil)");
-			} else if (pos + len < resp.size()) {
-				values.push_back(resp.substr(pos, len));
-				pos += len + 2;
+		size_t pos = 1;
+		auto read_line = [&]() -> std::string {
+			size_t end = resp.find("\r\n", pos);
+			if (end == std::string::npos) {
+				return {};
 			}
-				} catch (...) {
-					break;
+			std::string line = resp.substr(pos, end - pos);
+			pos = end + 2;
+			return line;
+		};
+
+		int32_t count = std::stoi(read_line());
+		for (int32_t element_idx = 0; element_idx < count && pos < resp.size(); ++element_idx) {
+			char type = resp[pos++];
+			if (type == '$') {
+				int32_t len = std::stoi(read_line());
+				if (len < 0) {
+					values.emplace_back("(nil)");
+				} else {
+					values.emplace_back(resp, pos, static_cast<size_t>(len));
+					pos += static_cast<size_t>(len) + 2; // skip data + CRLF
 				}
-			} else if (resp[pos] == '-') {
-				values.push_back("(nil)");
-				pos = resp.find('\n', pos) + 1;
+			} else if (type == '-') {
+				read_line(); // skip error message
+				values.emplace_back("(nil)");
+			} else {
+				read_line(); // skip other types
 			}
 		}
 	}
 
-	CommandRegistry* registry_;
+	CommandRegistry* registry;
 };
 
 TEST_F(MultiShardIntegrationTest, StringOperations) {
@@ -151,9 +147,11 @@ TEST_F(MultiShardIntegrationTest, FlushDBAndDBSize) {
 }
 
 TEST_F(MultiShardIntegrationTest, ShardingDistribution) {
+	const uint32_t key_count = 1000;
 	std::vector<std::string> keys;
-	for (int i = 0; i < 1000; ++i) {
-		keys.push_back("key_" + std::to_string(i));
+	keys.reserve(key_count);
+	for (uint32_t key_idx = 0; key_idx < key_count; ++key_idx) {
+		keys.emplace_back("key_" + std::to_string(key_idx));
 	}
 
 	std::vector<size_t> shard_counts(4, 0);
@@ -192,11 +190,14 @@ TEST_F(MultiShardIntegrationTest, CrossShardMGetSimulation) {
 	std::vector<std::string> keys_to_set;
 	std::vector<std::string> values_to_set;
 
-	for (int i = 0; i < 10; ++i) {
-		std::string key = "key_" + std::to_string(i);
-		std::string value = "value_" + std::to_string(i);
-		keys_to_set.push_back(key);
-		values_to_set.push_back(value);
+	const uint32_t key_count = 10;
+	keys_to_set.reserve(key_count);
+	values_to_set.reserve(key_count);
+	for (uint32_t key_idx = 0; key_idx < key_count; ++key_idx) {
+		std::string key = "key_" + std::to_string(key_idx);
+		std::string value = "value_" + std::to_string(key_idx);
+		keys_to_set.emplace_back(key);
+		values_to_set.emplace_back(value);
 		EXPECT_EQ(ExecuteCommand("SET", {key, value}, &ctx), "+OK\r\n");
 	}
 
@@ -207,8 +208,8 @@ TEST_F(MultiShardIntegrationTest, CrossShardMGetSimulation) {
 	ParseRESPArray(response, values);
 	EXPECT_EQ(values.size(), 10);
 
-	for (int i = 0; i < 10; ++i) {
-		EXPECT_EQ(values[i], values_to_set[i]) << "Mismatch for key_" << i;
+	for (uint32_t key_idx = 0; key_idx < key_count; ++key_idx) {
+		EXPECT_EQ(values[key_idx], values_to_set[key_idx]) << "Mismatch for key_" << key_idx;
 	}
 }
 
@@ -216,22 +217,24 @@ TEST_F(MultiShardIntegrationTest, LargeMSetMGet) {
 	Database db;
 	CommandContext ctx(&db, 0);
 
-	const int kNumKeys = 100;
+	const uint32_t num_keys = 100;
 	std::vector<std::string> args;
-	for (int i = 0; i < kNumKeys; ++i) {
-		args.push_back("key_" + std::to_string(i));
-		args.push_back("value_" + std::to_string(i));
+	args.reserve(static_cast<size_t>(num_keys) * 2U);
+	for (uint32_t key_idx = 0; key_idx < num_keys; ++key_idx) {
+		args.emplace_back("key_" + std::to_string(key_idx));
+		args.emplace_back("value_" + std::to_string(key_idx));
 	}
 
 	EXPECT_EQ(ExecuteCommand("MSET", args, &ctx), "+OK\r\n");
 
 	args.clear();
-	for (int i = 0; i < kNumKeys; ++i) {
-		args.push_back("key_" + std::to_string(i));
+	args.reserve(num_keys);
+	for (uint32_t key_idx = 0; key_idx < num_keys; ++key_idx) {
+		args.emplace_back("key_" + std::to_string(key_idx));
 	}
 
 	std::string response = ExecuteCommand("MGET", args, &ctx);
 	EXPECT_TRUE(response.find("*100") == 0);
 
-	EXPECT_EQ(ExecuteCommand("DBSIZE", {}, &ctx), ":" + std::to_string(kNumKeys) + "\r\n");
+	EXPECT_EQ(ExecuteCommand("DBSIZE", {}, &ctx), ":" + std::to_string(num_keys) + "\r\n");
 }

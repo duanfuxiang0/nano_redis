@@ -9,534 +9,401 @@
 namespace {
 using SetType = ankerl::unordered_dense::set<std::string, ankerl::unordered_dense::hash<std::string>>;
 using HashType = ankerl::unordered_dense::map<std::string, std::string, ankerl::unordered_dense::hash<std::string>>;
-}  // namespace
+} // namespace
 
-// ============================================================================
-// Tag & Flag Accessors
-// ============================================================================
+// --- Private helpers for copy/move/init ---
 
-uint8_t NanoObj::getTag() const {
-    return taglen_;
+void NanoObj::CopyFrom(const NanoObj& other) {
+	taglen = other.taglen;
+	flag = other.flag;
+	uint8_t tag = other.taglen;
+	if (tag <= kInlineLen) {
+		std::memcpy(u.data, other.u.data, tag);
+	} else if (tag == INT_TAG) {
+		u.ival = other.u.ival;
+	} else if (tag == SMALL_STR_TAG) {
+		u.small_str.length = other.u.small_str.length;
+		std::memcpy(u.small_str.prefix, other.u.small_str.prefix, 4);
+		u.small_str.ptr = static_cast<char*>(::operator new(other.u.small_str.length));
+		std::memcpy(u.small_str.ptr, other.u.small_str.ptr, other.u.small_str.length);
+	} else {
+		u.ival = 0;
+	}
 }
 
-uint8_t NanoObj::getFlag() const {
-    return flag_;
+void NanoObj::MoveFrom(NanoObj& other) noexcept {
+	taglen = other.taglen;
+	flag = other.flag;
+	u = other.u;
+	other.taglen = NULL_TAG;
+	other.flag = 0;
 }
 
-void NanoObj::setTag(uint8_t tag) {
-    taglen_ = tag;
+void NanoObj::ResetToNull() {
+	taglen = NULL_TAG;
+	flag = 0;
 }
 
-void NanoObj::setFlag(uint8_t flag) {
-    flag_ = flag;
+void NanoObj::InitRobj(uint8_t type, uint8_t encoding) {
+	Clear();
+	u.robj.type = type;
+	u.robj.encoding = encoding;
+	u.robj.inner_obj = nullptr;
+	u.robj.sz = 0;
+	taglen = ROBJ_TAG;
+	flag = 0;
 }
 
-// ============================================================================
-// Constructors & Destructor
-// ============================================================================
+// --- Constructors & Destructor ---
 
 NanoObj::NanoObj() {
-    setTag(NULL_TAG);
-    setFlag(0);
+	ResetToNull();
 }
 
 NanoObj::NanoObj(std::string_view str) {
-    setTag(NULL_TAG);
-    setFlag(0);
-    setString(str);
+	ResetToNull();
+	SetString(str);
 }
 
 NanoObj::NanoObj(int64_t val) {
-    setTag(NULL_TAG);
-    setFlag(0);
-    setInt(val);
+	ResetToNull();
+	SetInt(val);
 }
 
 NanoObj::NanoObj(const NanoObj& other) {
-    taglen_ = other.taglen_;
-    flag_ = other.flag_;
-
-    uint8_t tag = other.getTag();
-    if (tag <= kInlineLen) {
-        std::memcpy(u_.data, other.u_.data, tag);
-    } else if (tag == INT_TAG) {
-        u_.ival = other.u_.ival;
-    } else if (tag == SMALL_STR_TAG) {
-        u_.small_str.length = other.u_.small_str.length;
-        std::memcpy(u_.small_str.prefix, other.u_.small_str.prefix, 4);
-        u_.small_str.ptr = static_cast<char*>(::operator new(other.u_.small_str.length));
-        std::memcpy(u_.small_str.ptr, other.u_.small_str.ptr, other.u_.small_str.length);
-    } else {
-        u_.ival = 0;
-    }
+	CopyFrom(other);
 }
 
 NanoObj::NanoObj(NanoObj&& other) noexcept {
-    taglen_ = other.taglen_;
-    flag_ = other.flag_;
-    u_ = other.u_;
-
-    other.setTag(NULL_TAG);
-    other.setFlag(0);
+	MoveFrom(other);
 }
 
 NanoObj::~NanoObj() {
-    clear();
-}
-
-// ============================================================================
-// Move Assignment Operator
-// ============================================================================
-
-NanoObj& NanoObj::operator=(NanoObj&& other) noexcept {
-    if (this != &other) {
-        clear();
-
-        taglen_ = other.taglen_;
-        flag_ = other.flag_;
-        u_ = other.u_;
-
-        other.setTag(NULL_TAG);
-        other.setFlag(0);
-    }
-    return *this;
+	Clear();
 }
 
 NanoObj& NanoObj::operator=(const NanoObj& other) {
-    if (this != &other) {
-        clear();
-
-        taglen_ = other.taglen_;
-        flag_ = other.flag_;
-
-        uint8_t tag = other.getTag();
-        if (tag <= kInlineLen) {
-            std::memcpy(u_.data, other.u_.data, tag);
-        } else if (tag == INT_TAG) {
-            u_.ival = other.u_.ival;
-        } else if (tag == SMALL_STR_TAG) {
-            u_.small_str.length = other.u_.small_str.length;
-            std::memcpy(u_.small_str.prefix, other.u_.small_str.prefix, 4);
-            u_.small_str.ptr = static_cast<char*>(::operator new(other.u_.small_str.length));
-            std::memcpy(u_.small_str.ptr, other.u_.small_str.ptr, other.u_.small_str.length);
-        } else {
-            u_.ival = 0;
-        }
-    }
-    return *this;
+	if (this != &other) {
+		Clear();
+		CopyFrom(other);
+	}
+	return *this;
 }
 
-// ============================================================================
-// Static Factory Methods
-// ============================================================================
-
-NanoObj NanoObj::fromString(std::string_view str) {
-    return NanoObj(str);
+NanoObj& NanoObj::operator=(NanoObj&& other) noexcept {
+	if (this != &other) {
+		Clear();
+		MoveFrom(other);
+	}
+	return *this;
 }
 
-NanoObj NanoObj::fromInt(int64_t val) {
-    return NanoObj(val);
+// --- Static Factory Methods ---
+
+NanoObj NanoObj::FromString(std::string_view str) {
+	return NanoObj(str);
+}
+NanoObj NanoObj::FromInt(int64_t val) {
+	return NanoObj(val);
 }
 
-// ============================================================================
-// Type Query Methods
-// ============================================================================
-
-bool NanoObj::isNull() const {
-    return getTag() == NULL_TAG;
+NanoObj NanoObj::FromKey(std::string_view key) {
+	NanoObj obj;
+	obj.SetStringKey(key);
+	return obj;
 }
 
-bool NanoObj::isInt() const {
-    return getTag() == INT_TAG;
+NanoObj NanoObj::FromHash() {
+	NanoObj obj;
+	obj.SetHash();
+	return obj;
+}
+NanoObj NanoObj::FromSet() {
+	NanoObj obj;
+	obj.SetSet();
+	return obj;
+}
+NanoObj NanoObj::FromList() {
+	NanoObj obj;
+	obj.SetList();
+	return obj;
+}
+NanoObj NanoObj::FromZset() {
+	NanoObj obj;
+	obj.SetZset();
+	return obj;
 }
 
-bool NanoObj::isString() const {
-    return (getTag() <= kInlineLen) || getTag() == SMALL_STR_TAG;
+// --- Type Query Methods ---
+
+uint8_t NanoObj::GetTag() const {
+	return taglen;
+}
+uint8_t NanoObj::GetFlag() const {
+	return flag;
+}
+void NanoObj::SetTag(uint8_t tag) {
+	taglen = tag;
+}
+void NanoObj::SetFlag(uint8_t flag_value) {
+	flag = flag_value;
 }
 
-bool NanoObj::isHash() const {
-    return getTag() == ROBJ_TAG && u_.robj.type_ == OBJ_HASH;
+bool NanoObj::IsNull() const {
+	return taglen == NULL_TAG;
+}
+bool NanoObj::IsInt() const {
+	return taglen == INT_TAG;
+}
+bool NanoObj::IsString() const {
+	return taglen <= kInlineLen || taglen == SMALL_STR_TAG;
+}
+bool NanoObj::IsHash() const {
+	return taglen == ROBJ_TAG && u.robj.type == OBJ_HASH;
+}
+bool NanoObj::IsSet() const {
+	return taglen == ROBJ_TAG && u.robj.type == OBJ_SET;
+}
+bool NanoObj::IsList() const {
+	return taglen == ROBJ_TAG && u.robj.type == OBJ_LIST;
+}
+bool NanoObj::IsZset() const {
+	return taglen == ROBJ_TAG && u.robj.type == OBJ_ZSET;
 }
 
-bool NanoObj::isSet() const {
-    return getTag() == ROBJ_TAG && u_.robj.type_ == OBJ_SET;
+// --- Value Conversion Methods ---
+
+std::optional<std::string_view> NanoObj::TryToString() const {
+	if (taglen <= kInlineLen) {
+		return std::string_view(reinterpret_cast<const char*>(u.data), taglen);
+	}
+	return std::nullopt;
 }
 
-bool NanoObj::isList() const {
-    return getTag() == ROBJ_TAG && u_.robj.type_ == OBJ_LIST;
+std::optional<int64_t> NanoObj::TryToInt() const {
+	return taglen == INT_TAG ? std::optional<int64_t>(u.ival) : std::nullopt;
 }
 
-bool NanoObj::isZset() const {
-    return getTag() == ROBJ_TAG && u_.robj.type_ == OBJ_ZSET;
+std::string NanoObj::ToString() const {
+	if (taglen <= kInlineLen) {
+		return std::string(reinterpret_cast<const char*>(u.data), taglen);
+	}
+	if (taglen == INT_TAG) {
+		return std::to_string(u.ival);
+	}
+	if (taglen == SMALL_STR_TAG) {
+		return std::string(u.small_str.ptr, u.small_str.length);
+	}
+	return "";
 }
 
-// ============================================================================
-// Value Conversion Methods
-// ============================================================================
-
-std::optional<std::string_view> NanoObj::tryToString() const {
-    if (getTag() <= kInlineLen) {
-        return std::string_view(reinterpret_cast<const char*>(u_.data), getTag());
-    }
-    return std::nullopt;
+int64_t NanoObj::AsInt() const {
+	return taglen == INT_TAG ? u.ival : 0;
 }
 
-std::optional<int64_t> NanoObj::tryToInt() const {
-    if (getTag() == INT_TAG) {
-        return u_.ival;
-    }
-    return std::nullopt;
+std::string_view NanoObj::GetStringView() const {
+	if (taglen <= kInlineLen) {
+		return std::string_view(reinterpret_cast<const char*>(u.data), taglen);
+	}
+	if (taglen == SMALL_STR_TAG) {
+		return std::string_view(u.small_str.ptr, u.small_str.length);
+	}
+	return {};
 }
 
-std::string NanoObj::toString() const {
-    auto sv = tryToString();
-    if (sv) {
-        return std::string(*sv);
-    }
-    if (getTag() == INT_TAG) {
-        return std::to_string(u_.ival);
-    }
-    if (getTag() == SMALL_STR_TAG) {
-        return std::string(u_.small_str.ptr, u_.small_str.length);
-    }
-    return "";
+int64_t NanoObj::GetIntValue() const {
+	return AsInt();
 }
 
-int64_t NanoObj::asInt() const {
-    if (getTag() == INT_TAG) {
-        return u_.ival;
-    }
-    return 0;
+// --- Property Access Methods ---
+
+uint8_t NanoObj::GetType() const {
+	if (taglen == ROBJ_TAG) {
+		return u.robj.type;
+	}
+	return OBJ_STRING;
 }
 
-// ============================================================================
-// Property Access Methods
-// ============================================================================
-
-uint8_t NanoObj::getType() const {
-    if (getTag() == INT_TAG || getTag() <= kInlineLen || getTag() == SMALL_STR_TAG) {
-        return OBJ_STRING;
-    }
-    if (getTag() == ROBJ_TAG) {
-        return u_.robj.type_;
-    }
-    return OBJ_STRING;
+uint8_t NanoObj::GetEncoding() const {
+	switch (taglen) {
+	case NULL_TAG:
+		return OBJ_ENCODING_RAW;
+	case INT_TAG:
+		return OBJ_ENCODING_INT;
+	case SMALL_STR_TAG:
+		return OBJ_ENCODING_RAW;
+	case ROBJ_TAG:
+		return u.robj.encoding;
+	default:
+		return taglen <= kInlineLen ? OBJ_ENCODING_EMBSTR : OBJ_ENCODING_RAW;
+	}
 }
 
-uint8_t NanoObj::getEncoding() const {
-    if (getTag() == NULL_TAG) {
-        return OBJ_ENCODING_RAW;
-    }
-    if (getTag() == INT_TAG) {
-        return OBJ_ENCODING_INT;
-    }
-    if (getTag() <= kInlineLen) {
-        return OBJ_ENCODING_EMBSTR;
-    }
-    if (getTag() == SMALL_STR_TAG) {
-        return OBJ_ENCODING_RAW;
-    }
-    if (getTag() == ROBJ_TAG) {
-        return u_.robj.encoding_;
-    }
-    return OBJ_ENCODING_RAW;
+size_t NanoObj::Size() const {
+	if (taglen <= kInlineLen) {
+		return taglen;
+	}
+	if (taglen == SMALL_STR_TAG) {
+		return u.small_str.length;
+	}
+	if (taglen == INT_TAG) {
+		return std::to_string(u.ival).length();
+	}
+	if (taglen == ROBJ_TAG) {
+		return u.robj.sz;
+	}
+	return 0;
 }
 
-size_t NanoObj::size() const {
-    if (getTag() <= kInlineLen) {
-        return getTag();
-    }
-    if (getTag() == SMALL_STR_TAG) {
-        return u_.small_str.length;
-    }
-    if (getTag() == INT_TAG) {
-        return std::to_string(u_.ival).length();
-    }
-    if (getTag() == ROBJ_TAG) {
-        return u_.robj.sz_;
-    }
-    return 0;
+// --- Internal Setters ---
+
+void NanoObj::Clear() {
+	if (taglen == SMALL_STR_TAG) {
+		FreeSmallString();
+	} else if (taglen == ROBJ_TAG) {
+		FreeRobj();
+	}
 }
 
-// ============================================================================
-// Internal Setters
-// ============================================================================
-
-void NanoObj::clear() {
-    if (getTag() == SMALL_STR_TAG) {
-        freeSmallString();
-    } else if (getTag() == ROBJ_TAG) {
-        freeRobj();
-    }
+void NanoObj::FreeRobj() {
+	if (taglen != ROBJ_TAG || u.robj.inner_obj == nullptr) {
+		return;
+	}
+	// Must use `delete` so destructors run (not `::operator delete`).
+	switch (u.robj.type) {
+	case OBJ_LIST:
+		delete static_cast<std::deque<NanoObj>*>(u.robj.inner_obj);
+		break;
+	case OBJ_SET:
+		delete static_cast<SetType*>(u.robj.inner_obj);
+		break;
+	case OBJ_HASH:
+		delete static_cast<HashType*>(u.robj.inner_obj);
+		break;
+	default:
+		::operator delete(u.robj.inner_obj);
+		break;
+	}
+	u.robj.inner_obj = nullptr;
 }
 
-void NanoObj::freeRobj() {
-    if (getTag() != ROBJ_TAG) {
-        return;
-    }
-    if (u_.robj.inner_obj_ == nullptr) {
-        return;
-    }
-
-    // IMPORTANT:
-    // `inner_obj_` is allocated via `new T` in command implementations.
-    // We must use `delete` (not `::operator delete`) so that destructors run and
-    // internal allocations are released (otherwise we leak heavily under list/set/hash workloads).
-    switch (u_.robj.type_) {
-        case OBJ_LIST:
-            delete static_cast<std::deque<NanoObj>*>(u_.robj.inner_obj_);
-            break;
-        case OBJ_SET:
-            delete static_cast<SetType*>(u_.robj.inner_obj_);
-            break;
-        case OBJ_HASH:
-            delete static_cast<HashType*>(u_.robj.inner_obj_);
-            break;
-        default:
-            // Fallback for other object types not yet implemented here.
-            ::operator delete(u_.robj.inner_obj_);
-            break;
-    }
-    u_.robj.inner_obj_ = nullptr;
+void NanoObj::FreeSmallString() {
+	if (u.small_str.ptr != nullptr) {
+		::operator delete(u.small_str.ptr);
+		u.small_str.ptr = nullptr;
+	}
 }
 
-void NanoObj::setString(std::string_view str) {
-    if (str.size() <= kInlineLen) {
-        setInlineString(str);
-    } else {
-        setSmallString(str);
-    }
+void NanoObj::SetString(std::string_view str) {
+	str.size() <= kInlineLen ? SetInlineString(str) : SetSmallString(str);
+}
+
+void NanoObj::SetInt(int64_t val) {
+	Clear();
+	u.ival = val;
+	taglen = INT_TAG;
+	flag = 0;
+}
+
+void NanoObj::SetInlineString(std::string_view str) {
+	Clear();
+	std::memcpy(u.data, str.data(), str.size());
+	taglen = static_cast<uint8_t>(str.size());
+	flag = 0;
+}
+
+void NanoObj::SetSmallString(std::string_view str) {
+	Clear();
+	u.small_str.length = static_cast<uint16_t>(str.size());
+	taglen = SMALL_STR_TAG;
+	flag = 0;
+	size_t prefix_len = std::min(str.size(), size_t {4});
+	std::memcpy(u.small_str.prefix, str.data(), prefix_len);
+	u.small_str.ptr = static_cast<char*>(::operator new(str.size()));
+	std::memcpy(u.small_str.ptr, str.data(), str.size());
+}
+
+void NanoObj::SetStringKey(std::string_view str) {
+	if (str.size() <= 20) {
+		int64_t ival;
+		if (String2ll(str.data(), str.size(), &ival)) {
+			SetInt(ival);
+			return;
+		}
+	}
+	SetString(str);
 }
 
 char* NanoObj::PrepareStringBuffer(size_t len) {
-    clear();
-    setFlag(0);
-
-    if (len <= kInlineLen) {
-        setTag(static_cast<uint8_t>(len));
-        return u_.data;
-    }
-
-    u_.small_str.length = static_cast<uint16_t>(len);
-    std::memset(u_.small_str.prefix, 0, sizeof(u_.small_str.prefix));
-    u_.small_str.ptr = static_cast<char*>(::operator new(len));
-    setTag(SMALL_STR_TAG);
-    return u_.small_str.ptr;
+	Clear();
+	flag = 0;
+	if (len <= kInlineLen) {
+		taglen = static_cast<uint8_t>(len);
+		return u.data;
+	}
+	u.small_str.length = static_cast<uint16_t>(len);
+	std::memset(u.small_str.prefix, 0, sizeof(u.small_str.prefix));
+	u.small_str.ptr = static_cast<char*>(::operator new(len));
+	taglen = SMALL_STR_TAG;
+	return u.small_str.ptr;
 }
 
 void NanoObj::FinalizePreparedString() {
-    if (getTag() != SMALL_STR_TAG) {
-        return;
-    }
-
-    size_t prefix_len = std::min(static_cast<size_t>(u_.small_str.length), sizeof(u_.small_str.prefix));
-    if (prefix_len == 0) {
-        return;
-    }
-    std::memcpy(u_.small_str.prefix, u_.small_str.ptr, prefix_len);
+	if (taglen != SMALL_STR_TAG) {
+		return;
+	}
+	size_t prefix_len = std::min(static_cast<size_t>(u.small_str.length), sizeof(u.small_str.prefix));
+	if (prefix_len > 0) {
+		std::memcpy(u.small_str.prefix, u.small_str.ptr, prefix_len);
+	}
 }
 
 bool NanoObj::MaybeConvertToInt() {
-    std::string_view sv = getRawStringView();
-    if (sv.empty() || sv.size() > 20) {
-        return false;
-    }
-
-    int64_t ival;
-    if (!string2ll(sv.data(), sv.size(), &ival)) {
-        return false;
-    }
-
-    setInt(ival);
-    return true;
+	std::string_view sv = GetRawStringView();
+	if (sv.empty() || sv.size() > 20) {
+		return false;
+	}
+	int64_t ival;
+	if (!String2ll(sv.data(), sv.size(), &ival)) {
+		return false;
+	}
+	SetInt(ival);
+	return true;
 }
 
-void NanoObj::setInt(int64_t val) {
-    clear();
-    u_.ival = val;
-    setTag(INT_TAG);
-    setFlag(0);
+std::string_view NanoObj::GetRawStringView() const {
+	return GetStringView();
 }
 
-void NanoObj::setInlineString(std::string_view str) {
-    clear();
-    std::memcpy(u_.data, str.data(), str.size());
-    setTag(static_cast<uint8_t>(str.size()));
-    setFlag(0);
+// --- Type Setters ---
+
+void NanoObj::SetHash() {
+	InitRobj(OBJ_HASH, OBJ_ENCODING_HASHTABLE);
+}
+void NanoObj::SetSet() {
+	InitRobj(OBJ_SET, OBJ_ENCODING_HASHTABLE);
+}
+void NanoObj::SetList() {
+	InitRobj(OBJ_LIST, OBJ_ENCODING_RAW);
+}
+void NanoObj::SetZset() {
+	InitRobj(OBJ_ZSET, OBJ_ENCODING_SKIPLIST);
 }
 
-void NanoObj::setSmallString(std::string_view str) {
-    clear();
-    u_.small_str.length = static_cast<uint16_t>(str.size());
-    setTag(SMALL_STR_TAG);
-    setFlag(0);
-
-    size_t prefix_len = std::min(str.size(), size_t{4});
-    std::memcpy(u_.small_str.prefix, str.data(), prefix_len);
-
-    u_.small_str.ptr = static_cast<char*>(::operator new(str.size()));
-    std::memcpy(u_.small_str.ptr, str.data(), str.size());
-}
-
-void NanoObj::freeSmallString() {
-    if (u_.small_str.ptr != nullptr) {
-        ::operator delete(u_.small_str.ptr);
-        u_.small_str.ptr = nullptr;
-    }
-}
-
-// ============================================================================
-// Key-specific Methods
-// ============================================================================
-
-NanoObj NanoObj::fromKey(std::string_view key) {
-    NanoObj obj;
-    obj.setStringKey(key);
-    return obj;
-}
-
-void NanoObj::setStringKey(std::string_view str) {
-    if (str.size() <= 20) {
-        int64_t ival;
-        if (string2ll(str.data(), str.size(), &ival)) {
-            setInt(ival);
-            return;
-        }
-    }
-    setString(str);
-}
-
-std::string_view NanoObj::getRawStringView() const {
-    if (getTag() <= kInlineLen) {
-        return std::string_view(reinterpret_cast<const char*>(u_.data), getTag());
-    }
-    if (getTag() == SMALL_STR_TAG) {
-        return std::string_view(u_.small_str.ptr, u_.small_str.length);
-    }
-    return std::string_view();
-}
+// --- Comparison Operators ---
 
 bool NanoObj::operator==(const NanoObj& other) const {
-    uint8_t this_tag = getTag();
-    uint8_t other_tag = other.getTag();
-
-    if (this_tag == INT_TAG && other_tag == INT_TAG) {
-        return u_.ival == other.u_.ival;
-    }
-
-    if ((this_tag <= kInlineLen || this_tag == SMALL_STR_TAG) &&
-        (other_tag <= kInlineLen || other_tag == SMALL_STR_TAG)) {
-        std::string_view this_str = getRawStringView();
-        std::string_view other_str = other.getRawStringView();
-        return this_str == other_str;
-    }
-
-    return false;
+	if (taglen == INT_TAG && other.taglen == INT_TAG) {
+		return u.ival == other.u.ival;
+	}
+	bool this_str = (taglen <= kInlineLen || taglen == SMALL_STR_TAG);
+	bool other_str = (other.taglen <= kInlineLen || other.taglen == SMALL_STR_TAG);
+	if (this_str && other_str) {
+		return GetStringView() == other.GetStringView();
+	}
+	return false;
 }
 
 bool NanoObj::operator!=(const NanoObj& other) const {
-    return !(*this == other);
+	return !(*this == other);
 }
-
-// ============================================================================
-// Comparison Helpers
-// ============================================================================
-
-std::string_view NanoObj::getStringView() const {
-    if (getTag() <= kInlineLen) {
-        return std::string_view(reinterpret_cast<const char*>(u_.data), getTag());
-    }
-    if (getTag() == SMALL_STR_TAG) {
-        return std::string_view(u_.small_str.ptr, u_.small_str.length);
-    }
-    return std::string_view();
-}
-
-int64_t NanoObj::getIntValue() const {
-    if (getTag() == INT_TAG) {
-        return u_.ival;
-    }
-    return 0;
-}
-
-// ============================================================================
-// Factory Methods for Different Types
-// ============================================================================
-
-NanoObj NanoObj::fromHash() {
-    NanoObj obj;
-    obj.setHash();
-    return obj;
-}
-
-NanoObj NanoObj::fromSet() {
-    NanoObj obj;
-    obj.setSet();
-    return obj;
-}
-
-NanoObj NanoObj::fromList() {
-    NanoObj obj;
-    obj.setList();
-    return obj;
-}
-
-NanoObj NanoObj::fromZset() {
-    NanoObj obj;
-    obj.setZset();
-    return obj;
-}
-
-// ============================================================================
-// Type Setters for Different Types
-// ============================================================================
-
-void NanoObj::setHash() {
-    clear();
-    u_.robj.type_ = OBJ_HASH;
-    u_.robj.encoding_ = OBJ_ENCODING_HASHTABLE;
-    u_.robj.inner_obj_ = nullptr;
-    u_.robj.sz_ = 0;
-    setTag(ROBJ_TAG);
-    setFlag(0);
-}
-
-void NanoObj::setSet() {
-    clear();
-    u_.robj.type_ = OBJ_SET;
-    u_.robj.encoding_ = OBJ_ENCODING_HASHTABLE;
-    u_.robj.inner_obj_ = nullptr;
-    u_.robj.sz_ = 0;
-    setTag(ROBJ_TAG);
-    setFlag(0);
-}
-
-void NanoObj::setList() {
-    clear();
-    u_.robj.type_ = OBJ_LIST;
-    u_.robj.encoding_ = OBJ_ENCODING_RAW;
-    u_.robj.inner_obj_ = nullptr;
-    u_.robj.sz_ = 0;
-    setTag(ROBJ_TAG);
-    setFlag(0);
-}
-
-void NanoObj::setZset() {
-    clear();
-    u_.robj.type_ = OBJ_ZSET;
-    u_.robj.encoding_ = OBJ_ENCODING_SKIPLIST;
-    u_.robj.inner_obj_ = nullptr;
-    u_.robj.sz_ = 0;
-    setTag(ROBJ_TAG);
-    setFlag(0);
-}
-// ============================================================================
-// Factory Methods for Different Types
-// ============================================================================
-
-// ============================================================================
-// Template Methods
-// ============================================================================
-
-// Remove template method implementations from .cc file
-

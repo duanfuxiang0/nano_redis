@@ -11,7 +11,7 @@ namespace {
 constexpr uint64_t kInitialSegmentCount = 1;
 constexpr uint64_t kDefaultFixedBucketCount = 16;
 constexpr float kSplitThreshold = 0.8f;
-}
+} // namespace
 
 template <typename K, typename V>
 class DashTable {
@@ -37,10 +37,10 @@ public:
 	uint64_t SegmentCount() const;
 	uint64_t BucketCount() const;
 
-	template <typename Func>
-	void ForEach(Func&& func) const {
-		for (size_t i = 0; i < segment_directory_.size(); i = NextSeg(i)) {
-			const auto& segment = segment_directory_[i];
+	template <typename FUNC>
+	void ForEach(FUNC&& func) const {
+		for (size_t i = 0; i < segment_directory.size(); i = NextSeg(i)) {
+			const auto& segment = segment_directory[i];
 			for (const auto& [key, value] : segment->table) {
 				func(key, value);
 			}
@@ -64,13 +64,19 @@ private:
 	bool NeedSplit(uint32_t seg_id) const;
 	size_t NextSeg(size_t sid) const;
 
-	std::vector<std::shared_ptr<Segment>> segment_directory_;
-	uint8_t global_depth_;
-	uint64_t max_segment_size_;
+	std::vector<std::shared_ptr<Segment>> segment_directory;
+	uint8_t global_depth;
+	uint64_t max_segment_size;
 
 public:
-	uint8_t GetGlobalDepth() const { return global_depth_; }
-	uint8_t GetSegmentLocalDepth(uint32_t dir_idx) const { return segment_directory_[dir_idx]->local_depth; }
-	uint32_t GetSegmentId(uint32_t dir_idx) const { return segment_directory_[dir_idx]->segment_id; }
+	uint8_t GetGlobalDepth() const {
+		return global_depth;
+	}
+	uint8_t GetSegmentLocalDepth(uint32_t dir_idx) const {
+		return segment_directory[dir_idx]->local_depth;
+	}
+	uint32_t GetSegmentId(uint32_t dir_idx) const {
+		return segment_directory[dir_idx]->segment_id;
+	}
 	bool IsDirectoryConsistent() const;
 };

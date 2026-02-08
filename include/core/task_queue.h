@@ -54,7 +54,7 @@ public:
 
 	bool Empty() const;
 	void ProcessTasks();
-	int event_fd() const {
+	int EventFd() const {
 		return -1;
 	}
 
@@ -73,22 +73,22 @@ private:
 	void Run();
 
 private:
-	std::unique_ptr<Cell[]> buffer_;
-	size_t capacity_;
-	size_t buffer_mask_;
+	std::unique_ptr<Cell[]> buffer;
+	size_t capacity;
+	size_t buffer_mask;
 
-	alignas(hardware_destructive_interference_size) std::atomic<size_t> enqueue_pos_ {0};
-	alignas(hardware_destructive_interference_size) std::atomic<size_t> dequeue_pos_ {0};
+	alignas(hardware_destructive_interference_size) std::atomic<size_t> enqueue_pos {0};
+	alignas(hardware_destructive_interference_size) std::atomic<size_t> dequeue_pos {0};
 
-	photon::semaphore pull_sem_;
-	std::atomic<uint64_t> idler_ {0};
+	photon::semaphore pull_sem;
+	std::atomic<uint64_t> idler {0};
 	// Coalesce wakeups: avoid hammering semaphore::signal under load.
 	// When true, a wakeup has been issued (or is pending) for an idling consumer.
-	std::atomic<bool> wake_pending_{false};
+	std::atomic<bool> wake_pending {false};
 
-	size_t num_consumers_;
-	std::vector<photon::join_handle*> consumer_fibers_;
-	std::atomic<bool> is_closed_ {false};
+	size_t num_consumers;
+	std::vector<photon::join_handle*> consumer_fibers;
+	std::atomic<bool> is_closed {false};
 };
 
 template <typename F>
@@ -99,9 +99,8 @@ bool TaskQueue::TryAdd(F&& func) {
 		// Under high load, always signaling here becomes a major hotspot
 		// (spinlock + reschedule IPIs). Consumers that are actively running
 		// will pick up newly enqueued tasks without needing a wakeup.
-		if (idler_.load(std::memory_order_acquire) != 0 &&
-		    !wake_pending_.exchange(true, std::memory_order_acq_rel)) {
-			pull_sem_.signal(1);
+		if (idler.load(std::memory_order_acquire) != 0 && !wake_pending.exchange(true, std::memory_order_acq_rel)) {
+			pull_sem.signal(1);
 		}
 		return true;
 	}
@@ -122,7 +121,7 @@ bool TaskQueue::Add(F&& func) {
 	// - Consumer fibers never get a chance to execute
 	// - Use thread_usleep() to truly release the OS thread
 	static constexpr uint64_t kSleepUsec = 1000; // 1ms
-	while (!is_closed_.load(std::memory_order_relaxed)) {
+	while (!is_closed.load(std::memory_order_relaxed)) {
 		photon::thread_usleep(kSleepUsec);
 		if (TryAdd(std::forward<F>(func))) {
 			return true;

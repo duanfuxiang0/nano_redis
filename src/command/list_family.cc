@@ -7,17 +7,28 @@
 #include <algorithm>
 
 void ListFamily::Register(CommandRegistry* registry) {
-	registry->register_command_with_context("LPUSH", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LPush(args, ctx); });
-	registry->register_command_with_context("RPUSH", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return RPush(args, ctx); });
-	registry->register_command_with_context("LPOP", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LPop(args, ctx); });
-	registry->register_command_with_context("RPOP", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return RPop(args, ctx); });
-	registry->register_command_with_context("LLEN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LLen(args, ctx); });
-	registry->register_command_with_context("LINDEX", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LIndex(args, ctx); });
-	registry->register_command_with_context("LSET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LSet(args, ctx); });
-	registry->register_command_with_context("LRANGE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LRange(args, ctx); });
-	registry->register_command_with_context("LTRIM", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LTrim(args, ctx); });
-	registry->register_command_with_context("LREM", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LRem(args, ctx); });
-	registry->register_command_with_context("LINSERT", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LInsert(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "LPUSH", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LPush(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "RPUSH", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return RPush(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "LPOP", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LPop(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "RPOP", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return RPop(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "LLEN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LLen(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "LINDEX", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LIndex(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "LSET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LSet(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "LRANGE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LRange(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "LTRIM", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LTrim(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "LREM", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LRem(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "LINSERT", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LInsert(args, ctx); });
 }
 
 std::string ListFamily::LPush(const std::vector<NanoObj>& args, CommandContext* ctx) {
@@ -218,7 +229,7 @@ std::string ListFamily::LIndex(const std::vector<NanoObj>& args, CommandContext*
 	auto list = list_obj->getObj<std::deque<NanoObj>>();
 
 	if (index < 0) {
-		index += list->size();
+		index += static_cast<int64_t>(list->size());
 	}
 
 	if (index < 0 || index >= static_cast<int64_t>(list->size())) {
@@ -250,7 +261,7 @@ std::string ListFamily::LSet(const std::vector<NanoObj>& args, CommandContext* c
 	auto list = list_obj->getObj<std::deque<NanoObj>>();
 
 	if (index < 0) {
-		index += list->size();
+		index += static_cast<int64_t>(list->size());
 	}
 
 	if (index < 0 || index >= static_cast<int64_t>(list->size())) {
@@ -281,7 +292,7 @@ std::string ListFamily::LRange(const std::vector<NanoObj>& args, CommandContext*
 	}
 
 	auto list = list_obj->getObj<std::deque<NanoObj>>();
-	int64_t len = list->size();
+	int64_t len = static_cast<int64_t>(list->size());
 
 	if (start < 0) {
 		start += len;
@@ -337,7 +348,7 @@ std::string ListFamily::LTrim(const std::vector<NanoObj>& args, CommandContext* 
 	}
 
 	auto list = list_obj->getObj<std::deque<NanoObj>>();
-	int64_t len = list->size();
+	int64_t len = static_cast<int64_t>(list->size());
 
 	if (start < 0) {
 		start += len;
@@ -456,9 +467,8 @@ std::string ListFamily::LInsert(const std::vector<NanoObj>& args, CommandContext
 
 	auto list = list_obj->getObj<std::deque<NanoObj>>();
 
-	auto it = std::find_if(list->begin(), list->end(), [&pivot](const NanoObj& obj) {
-		return obj.toString() == pivot;
-	});
+	auto it =
+	    std::find_if(list->begin(), list->end(), [&pivot](const NanoObj& obj) { return obj.toString() == pivot; });
 
 	if (it == list->end()) {
 		return RESPParser::make_integer(-1);

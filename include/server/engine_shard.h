@@ -27,23 +27,31 @@ public:
 
 public:
 	// 仅限所属 vCPU 线程调用
-	Database& GetDB() { return *db_; }
+	Database& GetDB() {
+		return *db;
+	}
 
 	// 获取任务队列，用于跨分片请求
-	TaskQueue* GetTaskQueue() { return &task_queue_; }
+	TaskQueue* GetTaskQueue() {
+		return &task_queue;
+	}
 
-	size_t shard_id() const { return shard_id_; }
+	size_t ShardId() const {
+		return shard_id;
+	}
 
 	// 获取当前线程的分片
-	static EngineShard* tlocal() { return tlocal_shard_; }
+	static EngineShard* Tlocal() {
+		return tlocal_shard;
+	}
 
 	// 初始化线程本地指针
 	void InitializeInThread();
 
 private:
-	size_t shard_id_;
-	std::unique_ptr<Database> db_;
-	TaskQueue task_queue_;
+	size_t shard_id;
+	std::unique_ptr<Database> db;
+	TaskQueue task_queue;
 
-	static __thread EngineShard* tlocal_shard_;
+	static __thread EngineShard* tlocal_shard;
 };

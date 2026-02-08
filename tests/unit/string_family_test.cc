@@ -10,23 +10,25 @@
 class StringFamilyTest : public ::testing::Test {
 protected:
 	void SetUp() override {
-		registry_ = &CommandRegistry::instance();
-		StringFamily::Register(registry_);
-		CommandContext ctx(&db_, 0);
+		registry = &CommandRegistry::Instance();
+		StringFamily::Register(registry);
+		CommandContext ctx(&db, 0);
 		StringFamily::ClearDatabase(&ctx);
 	}
 
 	std::string Execute(const std::string& cmd, const std::vector<std::string>& args) {
-		std::vector<NanoObj> full_args = {NanoObj::fromKey(cmd)};
+		std::vector<NanoObj> full_args;
+		full_args.reserve(1 + args.size());
+		full_args.emplace_back(NanoObj::fromKey(cmd));
 		for (const auto& arg : args) {
-			full_args.push_back(NanoObj::fromKey(arg));
+			full_args.emplace_back(NanoObj::fromKey(arg));
 		}
-		CommandContext ctx(&db_, db_.CurrentDB());
-		return registry_->execute(full_args, &ctx);
+		CommandContext ctx(&db, db.CurrentDB());
+		return registry->Execute(full_args, &ctx);
 	}
 
-	CommandRegistry* registry_;
-	Database db_;
+	CommandRegistry* registry;
+	Database db;
 };
 
 TEST_F(StringFamilyTest, SetAndGet) {

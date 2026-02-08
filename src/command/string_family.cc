@@ -14,35 +14,52 @@
 #include <optional>
 
 void StringFamily::Register(CommandRegistry* registry) {
-	registry->register_command_with_context("SET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Set(args, ctx); });
-	registry->register_command_with_context("GET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Get(args, ctx); });
-	registry->register_command_with_context("DEL", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Del(args, ctx); });
-	registry->register_command_with_context("EXISTS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Exists(args, ctx); });
-	registry->register_command_with_context("MSET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return MSet(args, ctx); });
-	registry->register_command_with_context("MGET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return MGet(args, ctx); });
-	registry->register_command_with_context("INCR", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Incr(args, ctx); });
-	registry->register_command_with_context("DECR", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Decr(args, ctx); });
-	registry->register_command_with_context("INCRBY", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return IncrBy(args, ctx); });
-	registry->register_command_with_context("DECRBY", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return DecrBy(args, ctx); });
-	registry->register_command_with_context("APPEND", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Append(args, ctx); });
-	registry->register_command_with_context("STRLEN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return StrLen(args, ctx); });
-	registry->register_command_with_context("GETRANGE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return GetRange(args, ctx); });
-	registry->register_command_with_context("SETRANGE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SetRange(args, ctx); });
-	registry->register_command_with_context("SELECT", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Select(args, ctx); });
-	registry->register_command_with_context("KEYS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Keys(args, ctx); });
-	registry->register_command_with_context("FLUSHDB", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return FlushDB(args, ctx); });
-	registry->register_command_with_context("DBSIZE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return DBSize(args, ctx); });
-	registry->register_command_with_context(
+	registry->RegisterCommandWithContext(
+	    "SET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Set(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "GET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Get(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "DEL", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Del(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "EXISTS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Exists(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "MSET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return MSet(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "MGET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return MGet(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "INCR", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Incr(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "DECR", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Decr(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "INCRBY", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return IncrBy(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "DECRBY", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return DecrBy(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "APPEND", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Append(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "STRLEN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return StrLen(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "GETRANGE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return GetRange(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "SETRANGE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SetRange(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "SELECT", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Select(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "KEYS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Keys(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "FLUSHDB", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return FlushDB(args, ctx); });
+	registry->RegisterCommandWithContext(
+	    "DBSIZE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return DBSize(args, ctx); });
+	registry->RegisterCommandWithContext(
 	    "PING", [](const std::vector<NanoObj>&, CommandContext*) { return RESPParser::pong_response(); });
-	registry->register_command_with_context(
+	registry->RegisterCommandWithContext(
 	    "QUIT", [](const std::vector<NanoObj>&, CommandContext*) { return RESPParser::ok_response(); });
-	registry->register_command_with_context(
+	registry->RegisterCommandWithContext(
 	    "HELLO", [](const std::vector<NanoObj>& args, CommandContext*) { return Hello(args); });
-	registry->register_command_with_context(
-	    "COMMAND", [](const std::vector<NanoObj>&, CommandContext*) {
-	        // Return empty array for COMMAND (used by redis-cli for command discovery)
-	        return RESPParser::empty_array_response();
-	    });
+	registry->RegisterCommandWithContext("COMMAND", [](const std::vector<NanoObj>&, CommandContext*) {
+		// Return empty array for COMMAND (used by redis-cli for command discovery)
+		return RESPParser::empty_array_response();
+	});
 }
 
 std::string StringFamily::Set(const std::vector<NanoObj>& args, CommandContext* ctx) {
@@ -100,27 +117,28 @@ std::string StringFamily::Del(const std::vector<NanoObj>& args, CommandContext* 
 	for (size_t i = 1; i < args.size(); ++i) {
 		std::string key = args[i].toString();
 		const size_t shard_id = Shard(key, ctx->GetShardCount());
-		shard_to_keys[shard_id].push_back(KeyReq{std::move(key)});
+		shard_to_keys[shard_id].push_back(KeyReq {std::move(key)});
 	}
 
 	int count = 0;
 
 	for (auto& [shard_id, keys] : shard_to_keys) {
-		int shard_deleted = ctx->shard_set->Await(shard_id, [db_index = ctx->GetDBIndex(), keys = std::move(keys)]() mutable -> int {
-			EngineShard* shard = EngineShard::tlocal();
-			if (shard == nullptr) {
-				return 0;
-			}
-			auto& db = shard->GetDB();
-			db.Select(db_index);
-			int local_deleted = 0;
-			for (const auto& k : keys) {
-				if (db.Del(NanoObj::fromKey(k.key))) {
-					++local_deleted;
-				}
-			}
-			return local_deleted;
-		});
+		int shard_deleted =
+		    ctx->shard_set->Await(shard_id, [db_index = ctx->GetDBIndex(), keys = std::move(keys)]() mutable -> int {
+			    EngineShard* shard = EngineShard::Tlocal();
+			    if (shard == nullptr) {
+				    return 0;
+			    }
+			    auto& db = shard->GetDB();
+			    db.Select(db_index);
+			    int local_deleted = 0;
+			    for (const auto& k : keys) {
+				    if (db.Del(NanoObj::fromKey(k.key))) {
+					    ++local_deleted;
+				    }
+			    }
+			    return local_deleted;
+		    });
 		count += shard_deleted;
 	}
 
@@ -153,26 +171,27 @@ std::string StringFamily::Exists(const std::vector<NanoObj>& args, CommandContex
 	for (size_t i = 1; i < args.size(); ++i) {
 		std::string key = args[i].toString();
 		const size_t shard_id = Shard(key, ctx->GetShardCount());
-		shard_to_keys[shard_id].push_back(KeyReq{std::move(key)});
+		shard_to_keys[shard_id].push_back(KeyReq {std::move(key)});
 	}
 
 	int count = 0;
 	for (auto& [shard_id, keys] : shard_to_keys) {
-		int shard_count = ctx->shard_set->Await(shard_id, [db_index = ctx->GetDBIndex(), keys = std::move(keys)]() mutable -> int {
-			EngineShard* shard = EngineShard::tlocal();
-			if (shard == nullptr) {
-				return 0;
-			}
-			auto& db = shard->GetDB();
-			db.Select(db_index);
-			int local_exists = 0;
-			for (const auto& k : keys) {
-				if (db.Exists(NanoObj::fromKey(k.key))) {
-					++local_exists;
-				}
-			}
-			return local_exists;
-		});
+		int shard_count =
+		    ctx->shard_set->Await(shard_id, [db_index = ctx->GetDBIndex(), keys = std::move(keys)]() mutable -> int {
+			    EngineShard* shard = EngineShard::Tlocal();
+			    if (shard == nullptr) {
+				    return 0;
+			    }
+			    auto& db = shard->GetDB();
+			    db.Select(db_index);
+			    int local_exists = 0;
+			    for (const auto& k : keys) {
+				    if (db.Exists(NanoObj::fromKey(k.key))) {
+					    ++local_exists;
+				    }
+			    }
+			    return local_exists;
+		    });
 		count += shard_count;
 	}
 
@@ -206,12 +225,12 @@ std::string StringFamily::MSet(const std::vector<NanoObj>& args, CommandContext*
 		std::string key = args[i].toString();
 		std::string value = args[i + 1].toString();
 		const size_t shard_id = Shard(key, ctx->GetShardCount());
-		shard_to_pairs[shard_id].push_back(KvPair{std::move(key), std::move(value)});
+		shard_to_pairs[shard_id].push_back(KvPair {std::move(key), std::move(value)});
 	}
 
 	for (auto& [shard_id, pairs] : shard_to_pairs) {
 		ctx->shard_set->Await(shard_id, [db_index = ctx->GetDBIndex(), pairs = std::move(pairs)]() mutable {
-			EngineShard* shard = EngineShard::tlocal();
+			EngineShard* shard = EngineShard::Tlocal();
 			if (shard == nullptr) {
 				return;
 			}
@@ -235,7 +254,7 @@ std::string StringFamily::MGet(const std::vector<NanoObj>& args, CommandContext*
 
 	if (ctx->IsSingleShard() || ctx->shard_set == nullptr) {
 		auto* db = ctx->GetDB();
-		std::string result = RESPParser::make_array(num_keys);
+		std::string result = RESPParser::make_array(static_cast<int64_t>(num_keys));
 		for (size_t i = 1; i < args.size(); ++i) {
 			auto val = db->Get(args[i]);
 			if (val) {
@@ -258,37 +277,36 @@ std::string StringFamily::MGet(const std::vector<NanoObj>& args, CommandContext*
 	for (size_t i = 1; i < args.size(); ++i) {
 		std::string key = args[i].toString();
 		const size_t shard_id = Shard(key, ctx->GetShardCount());
-		shard_to_reqs[shard_id].push_back(KeyReq{i - 1, std::move(key)});
+		shard_to_reqs[shard_id].push_back(KeyReq {i - 1, std::move(key)});
 	}
 
 	std::vector<std::optional<std::string>> final_values(num_keys);
 
 	for (auto& [shard_id, reqs] : shard_to_reqs) {
-		auto results = ctx->shard_set->Await(
-		    shard_id,
-		    [db_index = ctx->GetDBIndex(), reqs = std::move(reqs)]() mutable
-		        -> std::vector<std::pair<size_t, std::optional<std::string>>> {
-			    std::vector<std::pair<size_t, std::optional<std::string>>> out;
-			    out.reserve(reqs.size());
+		auto results = ctx->shard_set->Await(shard_id,
+		                                     [db_index = ctx->GetDBIndex(), reqs = std::move(reqs)]() mutable
+		                                     -> std::vector<std::pair<size_t, std::optional<std::string>>> {
+			                                     std::vector<std::pair<size_t, std::optional<std::string>>> out;
+			                                     out.reserve(reqs.size());
 
-			    EngineShard* shard = EngineShard::tlocal();
-			    if (shard == nullptr) {
-				    return out;
-			    }
-			    auto& db = shard->GetDB();
-			    db.Select(db_index);
-			    for (const auto& req : reqs) {
-				    out.emplace_back(req.index, db.Get(NanoObj::fromKey(req.key)));
-			    }
-			    return out;
-		    });
+			                                     EngineShard* shard = EngineShard::Tlocal();
+			                                     if (shard == nullptr) {
+				                                     return out;
+			                                     }
+			                                     auto& db = shard->GetDB();
+			                                     db.Select(db_index);
+			                                     for (const auto& req : reqs) {
+				                                     out.emplace_back(req.index, db.Get(NanoObj::fromKey(req.key)));
+			                                     }
+			                                     return out;
+		                                     });
 
 		for (auto& [idx, val] : results) {
 			final_values[idx] = std::move(val);
 		}
 	}
 
-	std::string result = RESPParser::make_array(num_keys);
+	std::string result = RESPParser::make_array(static_cast<int64_t>(num_keys));
 	for (size_t i = 0; i < num_keys; ++i) {
 		if (final_values[i]) {
 			result += RESPParser::make_bulk_string(*final_values[i]);
@@ -391,7 +409,7 @@ std::string StringFamily::Append(const std::vector<NanoObj>& args, CommandContex
 	}
 
 	db->Set(key, NanoObj::fromKey(new_value));
-	return RESPParser::make_integer(new_value.length());
+	return RESPParser::make_integer(static_cast<int64_t>(new_value.length()));
 }
 
 std::string StringFamily::StrLen(const std::vector<NanoObj>& args, CommandContext* ctx) {
@@ -403,7 +421,7 @@ std::string StringFamily::StrLen(const std::vector<NanoObj>& args, CommandContex
 
 	auto val = db->Get(args[1]);
 	if (val) {
-		return RESPParser::make_integer(val->length());
+		return RESPParser::make_integer(static_cast<int64_t>(val->length()));
 	} else {
 		return RESPParser::make_integer(0);
 	}
@@ -417,8 +435,8 @@ std::string StringFamily::GetRange(const std::vector<NanoObj>& args, CommandCont
 	}
 
 	const NanoObj& key = args[1];
-	int start = ParseInt(args[2].toString());
-	int end = ParseInt(args[3].toString());
+	int64_t start = ParseInt(args[2].toString());
+	int64_t end = ParseInt(args[3].toString());
 
 	auto val = db->Get(key);
 	if (!val) {
@@ -426,7 +444,7 @@ std::string StringFamily::GetRange(const std::vector<NanoObj>& args, CommandCont
 	}
 
 	std::string s = *val;
-	int len = s.length();
+	int64_t len = static_cast<int64_t>(s.length());
 
 	start = AdjustIndex(start, len);
 	end = AdjustIndex(end, len);
@@ -435,7 +453,8 @@ std::string StringFamily::GetRange(const std::vector<NanoObj>& args, CommandCont
 		return RESPParser::make_bulk_string("");
 	}
 
-	std::string result = s.substr(start, end - start + 1);
+	std::string result =
+	    s.substr(static_cast<size_t>(start), static_cast<size_t>(end - start + 1));
 	return RESPParser::make_bulk_string(result);
 }
 
@@ -447,7 +466,7 @@ std::string StringFamily::SetRange(const std::vector<NanoObj>& args, CommandCont
 	}
 
 	const NanoObj& key = args[1];
-	int offset = ParseInt(args[2].toString());
+	int64_t offset = ParseInt(args[2].toString());
 	const NanoObj& value = args[3];
 
 	std::string new_value;
@@ -460,15 +479,17 @@ std::string StringFamily::SetRange(const std::vector<NanoObj>& args, CommandCont
 		offset = 0;
 	}
 
-	size_t new_length = std::max(new_value.length(), static_cast<size_t>(offset) + value.toString().length());
+	std::string value_str = value.toString();
+	size_t offset_sz = static_cast<size_t>(offset);
+	size_t new_length = std::max(new_value.length(), offset_sz + value_str.length());
 	new_value.resize(new_length, '\0');
 
-	for (size_t i = 0; i < value.toString().length(); ++i) {
-		new_value[offset + i] = value.toString()[i];
+	for (size_t i = 0; i < value_str.length(); ++i) {
+		new_value[offset_sz + i] = value_str[i];
 	}
 
 	db->Set(key, NanoObj::fromKey(new_value));
-	return RESPParser::make_integer(new_value.length());
+	return RESPParser::make_integer(static_cast<int64_t>(new_value.length()));
 }
 
 std::string StringFamily::Select(const std::vector<NanoObj>& args, CommandContext* ctx) {
@@ -483,9 +504,9 @@ std::string StringFamily::Select(const std::vector<NanoObj>& args, CommandContex
 	// In sharded mode we keep database selection consistent across all shards
 	// (current implementation is global, not per-connection).
 	if (ctx->shard_set && !ctx->IsSingleShard()) {
-		for (size_t shard_id = 0; shard_id < ctx->shard_set->size(); ++shard_id) {
+		for (size_t shard_id = 0; shard_id < ctx->shard_set->Size(); ++shard_id) {
 			bool ok = ctx->shard_set->Await(shard_id, [db_index]() -> bool {
-				EngineShard* shard = EngineShard::tlocal();
+				EngineShard* shard = EngineShard::Tlocal();
 				if (shard == nullptr) {
 					return false;
 				}
@@ -509,10 +530,11 @@ std::string StringFamily::Select(const std::vector<NanoObj>& args, CommandContex
 }
 
 std::string StringFamily::Keys(const std::vector<NanoObj>& args, CommandContext* ctx) {
+	(void)args;
 	auto* db = ctx->GetDB();
 
 	std::vector<std::string> keys = db->Keys();
-	std::string response = RESPParser::make_array(keys.size());
+	std::string response = RESPParser::make_array(static_cast<int64_t>(keys.size()));
 	for (const auto& key : keys) {
 		response += RESPParser::make_bulk_string(key);
 	}
@@ -520,15 +542,16 @@ std::string StringFamily::Keys(const std::vector<NanoObj>& args, CommandContext*
 }
 
 std::string StringFamily::FlushDB(const std::vector<NanoObj>& args, CommandContext* ctx) {
+	(void)args;
 	if (!ctx->shard_set || ctx->IsSingleShard()) {
 		auto* db = ctx->GetDB();
 		db->ClearCurrentDB();
 		return RESPParser::ok_response();
 	}
 
-	for (size_t shard_id = 0; shard_id < ctx->shard_set->size(); ++shard_id) {
+	for (size_t shard_id = 0; shard_id < ctx->shard_set->Size(); ++shard_id) {
 		ctx->shard_set->Add(shard_id, [db_index = ctx->GetDBIndex()]() {
-			EngineShard* shard = EngineShard::tlocal();
+			EngineShard* shard = EngineShard::Tlocal();
 			if (shard) {
 				auto& db = shard->GetDB();
 				db.Select(db_index);
@@ -541,6 +564,7 @@ std::string StringFamily::FlushDB(const std::vector<NanoObj>& args, CommandConte
 }
 
 std::string StringFamily::DBSize(const std::vector<NanoObj>& args, CommandContext* ctx) {
+	(void)args;
 	if (!ctx->shard_set || ctx->IsSingleShard()) {
 		auto* db = ctx->GetDB();
 		size_t count = db->KeyCount();
@@ -548,9 +572,9 @@ std::string StringFamily::DBSize(const std::vector<NanoObj>& args, CommandContex
 	}
 
 	size_t total_count = 0;
-	for (size_t shard_id = 0; shard_id < ctx->shard_set->size(); ++shard_id) {
+	for (size_t shard_id = 0; shard_id < ctx->shard_set->Size(); ++shard_id) {
 		size_t shard_count = ctx->shard_set->Await(shard_id, [db_index = ctx->GetDBIndex()]() -> size_t {
-			EngineShard* shard = EngineShard::tlocal();
+			EngineShard* shard = EngineShard::Tlocal();
 			if (shard) {
 				auto& db = shard->GetDB();
 				db.Select(db_index);
@@ -574,7 +598,7 @@ int64_t StringFamily::ParseInt(const std::string& s) {
 	return std::strtoll(s.c_str(), &end, 10);
 }
 
-int StringFamily::AdjustIndex(int index, int length) {
+int64_t StringFamily::AdjustIndex(int64_t index, int64_t length) {
 	if (index < 0) {
 		index += length;
 	}
@@ -590,7 +614,7 @@ int StringFamily::AdjustIndex(int index, int length) {
 std::string StringFamily::Hello(const std::vector<NanoObj>& args) {
 	// HELLO [protover [AUTH username password] [SETNAME clientname]]
 	// Returns server information as a map (array of key-value pairs in RESP2)
-	int proto_ver = 2;  // Default to RESP2
+	int64_t proto_ver = 2; // Default to RESP2
 	if (args.size() > 1) {
 		proto_ver = ParseInt(args[1].toString());
 		if (proto_ver < 2 || proto_ver > 3) {
@@ -600,13 +624,13 @@ std::string StringFamily::Hello(const std::vector<NanoObj>& args) {
 
 	// For now, we only support RESP2 (protocol version 2)
 	// Return a map as an array: [key1, val1, key2, val2, ...]
-	std::string response = RESPParser::make_array(14);  // 7 key-value pairs
+	std::string response = RESPParser::make_array(14); // 7 key-value pairs
 	response += RESPParser::make_bulk_string("server");
 	response += RESPParser::make_bulk_string("nano_redis");
 	response += RESPParser::make_bulk_string("version");
 	response += RESPParser::make_bulk_string("0.1.0");
 	response += RESPParser::make_bulk_string("proto");
-	response += RESPParser::make_integer(2);  // We only support RESP2
+	response += RESPParser::make_integer(2); // We only support RESP2
 	response += RESPParser::make_bulk_string("id");
 	response += RESPParser::make_integer(1);
 	response += RESPParser::make_bulk_string("mode");
@@ -614,7 +638,7 @@ std::string StringFamily::Hello(const std::vector<NanoObj>& args) {
 	response += RESPParser::make_bulk_string("role");
 	response += RESPParser::make_bulk_string("master");
 	response += RESPParser::make_bulk_string("modules");
-	response += RESPParser::make_array(0);  // No modules
+	response += RESPParser::make_array(0); // No modules
 
 	return response;
 }

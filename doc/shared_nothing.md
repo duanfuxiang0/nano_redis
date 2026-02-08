@@ -28,7 +28,7 @@ NanoRedis uses a **shared-nothing, thread-per-core** architecture where:
 │  │ (Database)  │      │ (Database)  │      │ (Database)  │      │
 │  ├─────────────┤      ├─────────────┤      ├─────────────┤      │
 │  │ TaskQueue   │◄────►│ TaskQueue   │◄────►│ TaskQueue   │      │
-│  │ (MPSC)      │      │ (MPSC)      │      │ (MPSC)      │      │
+│  │ (MPMC)      │      │ (MPMC)      │      │ (MPMC)      │      │
 │  └─────────────┘      └─────────────┘      └─────────────┘      │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -106,7 +106,7 @@ Key PhotonLibOS APIs used:
 - `photon::init()` / `photon::fini()`: Initialize/cleanup per-thread
 - `photon::thread_create11()`: Create fibers
 - `photon::net::new_tcp_socket_server()`: TCP server with connection handlers
-- `photon::wait_for_fd_readable()`: Async wait for eventfd (TaskQueue notification)
+- `photon::semaphore`: Fiber-friendly wait/notify (TaskQueue notification)
 
 ## Benefits
 

@@ -22,8 +22,8 @@ public:
 	void Term();
 
 private:
-	std::unique_ptr<ProactorPool> proactor_pool_;
-	size_t num_shards_;
-	uint16_t port_;
-	std::atomic<bool> running_{false};
+	std::unique_ptr<ProactorPool> proactor_pool;
+	size_t num_shards;
+	uint16_t port;
+	std::atomic<bool> running {false};
 };

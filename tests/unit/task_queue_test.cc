@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <memory>
 #include <thread>
 #include <vector>
 #include <atomic>
@@ -8,23 +9,19 @@ class TaskQueueTest : public ::testing::Test {
 protected:
 	void SetUp() override {
 		// Create queue without starting consumer fibers for basic tests
-		queue_ = new TaskQueue(4096, 0);
+		queue = std::make_unique<TaskQueue>(4096, 0);
 	}
 
-	void TearDown() override {
-		delete queue_;
-	}
-
-	TaskQueue* queue_ = nullptr;
+	std::unique_ptr<TaskQueue> queue;
 };
 
 TEST_F(TaskQueueTest, BasicEnqueueDequeue) {
 	bool executed = false;
-	ASSERT_TRUE(queue_->TryAdd([&executed]() { executed = true; }));
+	ASSERT_TRUE(queue->TryAdd([&executed]() { executed = true; }));
 
 	EXPECT_FALSE(executed);
 
-	queue_->ProcessTasks();
+	queue->ProcessTasks();
 
 	EXPECT_TRUE(executed);
 }
@@ -34,12 +31,12 @@ TEST_F(TaskQueueTest, MultipleTasks) {
 	const int kNumTasks = 100;
 
 	for (int i = 0; i < kNumTasks; ++i) {
-		ASSERT_TRUE(queue_->TryAdd([&counter]() { counter++; }));
+		ASSERT_TRUE(queue->TryAdd([&counter]() { counter++; }));
 	}
 
 	EXPECT_EQ(counter, 0);
 
-	queue_->ProcessTasks();
+	queue->ProcessTasks();
 
 	EXPECT_EQ(counter, kNumTasks);
 }
@@ -51,9 +48,7 @@ TEST_F(TaskQueueTest, ProducerConsumer) {
 
 	std::thread producer([&]() {
 		for (int i = 0; i < kNumTasks; ++i) {
-			while (!queue_->TryAdd([&completed_count]() {
-				completed_count++;
-			})) {
+			while (!queue->TryAdd([&completed_count]() { completed_count++; })) {
 				std::this_thread::yield();
 			}
 		}
@@ -62,7 +57,7 @@ TEST_F(TaskQueueTest, ProducerConsumer) {
 
 	std::thread consumer([&]() {
 		while (!producer_done || completed_count < kNumTasks) {
-			queue_->ProcessTasks();
+			queue->ProcessTasks();
 			std::this_thread::yield();
 		}
 	});
@@ -80,17 +75,14 @@ TEST_F(TaskQueueTest, MultipleProducers) {
 	std::atomic<int> completed_count(0);
 	std::atomic<int> producers_done(0);
 	std::vector<std::thread> producers;
+	producers.reserve(kNumProducers);
 
 	for (int p = 0; p < kNumProducers; ++p) {
-		producers.emplace_back([&, p]() {
-			int local_count = 0;
+		producers.emplace_back([&]() {
 			for (int i = 0; i < kTasksPerProducer; ++i) {
-				while (!queue_->TryAdd([&completed_count]() {
-					completed_count++;
-				})) {
+				while (!queue->TryAdd([&completed_count]() { completed_count++; })) {
 					std::this_thread::yield();
 				}
-				local_count++;
 			}
 			producers_done++;
 		});
@@ -98,7 +90,7 @@ TEST_F(TaskQueueTest, MultipleProducers) {
 
 	std::thread consumer([&]() {
 		while (producers_done < kNumProducers || completed_count < kTotalTasks) {
-			queue_->ProcessTasks();
+			queue->ProcessTasks();
 			std::this_thread::yield();
 		}
 	});
@@ -112,16 +104,16 @@ TEST_F(TaskQueueTest, MultipleProducers) {
 }
 
 TEST_F(TaskQueueTest, EmptyQueue) {
-	EXPECT_TRUE(queue_->Empty());
+	EXPECT_TRUE(queue->Empty());
 
-	queue_->ProcessTasks();
-	EXPECT_TRUE(queue_->Empty());
+	queue->ProcessTasks();
+	EXPECT_TRUE(queue->Empty());
 }
 
 TEST_F(TaskQueueTest, NonEmptyQueue) {
-	queue_->TryAdd([]() {});
+	queue->TryAdd([]() {});
 
-	EXPECT_FALSE(queue_->Empty());
+	EXPECT_FALSE(queue->Empty());
 }
 
 TEST_F(TaskQueueTest, QueueCapacity) {
@@ -143,11 +135,9 @@ TEST_F(TaskQueueTest, TaskWithCapture) {
 	std::string expected = "hello";
 	std::string actual;
 
-	queue_->TryAdd([&expected, &actual]() {
-		actual = expected;
-	});
+	queue->TryAdd([&expected, &actual]() { actual = expected; });
 
-	queue_->ProcessTasks();
+	queue->ProcessTasks();
 
 	EXPECT_EQ(actual, expected);
 }

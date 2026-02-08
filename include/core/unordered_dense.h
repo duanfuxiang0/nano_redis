@@ -3,6 +3,7 @@
 // A fast & densely stored hashmap and hashset based on robin-hood backward shift deletion.
 // Version 4.8.1
 // https://github.com/martinus/unordered_dense
+// NOLINTBEGIN
 //
 // Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 // SPDX-License-Identifier: MIT
@@ -354,9 +355,8 @@ struct tuple_hash_helper {
 		}
 	}
 
-	[[nodiscard]] ANKERL_UNORDERED_DENSE_DISABLE_UBSAN_UNSIGNED_INTEGER_CHECK static auto mix64(std::uint64_t state,
-	                                                                                            std::uint64_t v)
-	    -> std::uint64_t {
+	[[nodiscard]] ANKERL_UNORDERED_DENSE_DISABLE_UBSAN_UNSIGNED_INTEGER_CHECK static auto
+	mix64(std::uint64_t state, std::uint64_t v) -> std::uint64_t {
 		return detail::wyhash::mix(state + v, std::uint64_t {0x9ddfea08eb382d69});
 	}
 
@@ -430,15 +430,15 @@ template <>
 struct hash<NanoObj> {
 	using is_avalanching = void;
 	auto operator()(NanoObj const& obj) const noexcept -> std::uint64_t {
-		uint8_t tag = obj.getTag();
+		uint8_t tag = obj.GetTag();
 
 		if (tag <= 14) {
-			auto sv = obj.getStringView();
+			auto sv = obj.GetStringView();
 			return detail::wyhash::hash(sv.data(), sv.size());
 		} else if (tag == 15) {
-			return detail::wyhash::hash(static_cast<std::uint64_t>(obj.getIntValue()));
+			return detail::wyhash::hash(static_cast<std::uint64_t>(obj.GetIntValue()));
 		} else if (tag == 16) {
-			auto sv = obj.getStringView();
+			auto sv = obj.GetStringView();
 			return detail::wyhash::hash(sv.data(), sv.size());
 		}
 		return 0;
@@ -1215,8 +1215,8 @@ private:
 	}
 
 	template <typename... Args>
-	auto do_place_element(dist_and_fingerprint_type dist_and_fingerprint, value_idx_type bucket_idx, Args&&... args)
-	    -> std::pair<iterator, bool> {
+	auto do_place_element(dist_and_fingerprint_type dist_and_fingerprint, value_idx_type bucket_idx,
+	                      Args&&... args) -> std::pair<iterator, bool> {
 		// emplace the new value. If that throws an exception, no harm done; index is still in a valid state
 		m_values.emplace_back(std::forward<Args>(args)...);
 
@@ -2155,6 +2155,8 @@ auto erase_if(ankerl::unordered_dense::detail::table<Key, T, Hash, KeyEqual, All
 }
 
 } // namespace std
+
+// NOLINTEND
 
 #endif
 #endif

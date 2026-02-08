@@ -30,8 +30,12 @@ public:
 	void Stop();
 	void Join();
 
-	size_t size() const { return num_vcpus_; }
-	EngineShardSet* GetShardSet() { return shard_set_.get(); }
+	size_t Size() const {
+		return num_vcpus;
+	}
+	EngineShardSet* GetShardSet() {
+		return shard_set.get();
+	}
 	photon::vcpu_base* GetVcpu(size_t index);
 
 private:
@@ -39,16 +43,16 @@ private:
 	int HandleConnection(photon::net::ISocketStream* stream);
 
 private:
-	size_t num_vcpus_;
-	uint16_t port_;
-	std::atomic<bool> running_{false};
-	std::atomic<bool> init_failed_{false};
+	size_t num_vcpus;
+	uint16_t port;
+	std::atomic<bool> running {false};
+	std::atomic<bool> init_failed {false};
 
-	std::vector<std::thread> threads_;
-	std::vector<photon::vcpu_base*> vcpus_;
-	std::vector<photon::net::ISocketServer*> servers_;
-	std::unique_ptr<EngineShardSet> shard_set_;
+	std::vector<std::thread> threads;
+	std::vector<photon::vcpu_base*> vcpus;
+	std::vector<photon::net::ISocketServer*> servers;
+	std::unique_ptr<EngineShardSet> shard_set;
 
-	std::atomic<size_t> init_done_vcpus_{0};
-	std::atomic<size_t> init_ok_vcpus_{0};
+	std::atomic<size_t> init_done_vcpus {0};
+	std::atomic<size_t> init_ok_vcpus {0};
 };

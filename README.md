@@ -66,6 +66,19 @@ cd build && ctest
 ./build/benchmarks/concurrent_bench
 ```
 
+### 代码风格（自动化）
+
+```bash
+# 格式化（只处理 include/src/tests，自动跳过 third_party）
+./scripts/style.sh format
+
+# 检查（不改文件，发现问题返回非 0）
+./scripts/style.sh check
+
+# clang-tidy（需要本机安装 clang-tidy）
+./scripts/style.sh tidy
+```
+
 ## 学习目标
 
 通过本项目学习：

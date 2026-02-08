@@ -10,28 +10,36 @@
 
 DEFINE_int32(port, 9527, "Server listen port");
 DEFINE_int32(num_shards, 8, "Number of shards");
-DEFINE_bool(tcp_nodelay, true, "Enable TCP_NODELAY (lower latency, usually lower throughput in small-reply benchmarks)");
-DEFINE_bool(use_iouring_tcp_server, true, "Use Photon io_uring TCP server implementation (fallback to syscall-based server if unavailable)");
-DEFINE_uint64(photon_handler_stack_kb, 256, "Photon per-connection handler fiber stack size in KB (default Photon is 8192KB)");
+DEFINE_bool(tcp_nodelay, true,
+            "Enable TCP_NODELAY (lower latency, usually lower throughput in small-reply benchmarks)");
+DEFINE_bool(use_iouring_tcp_server, true,
+            "Use Photon io_uring TCP server implementation (fallback to syscall-based server if unavailable)");
 
+DEFINE_uint64(photon_handler_stack_kb, 256,
+              "Photon per-connection handler fiber stack size in KB (default Photon is 8192KB)");
+
+// NOLINTNEXTLINE(readability-identifier-naming)
 extern "C" uint64_t nano_redis_photon_handler_stack_size() {
 	return FLAGS_photon_handler_stack_kb * 1024ULL;
 }
 
-std::unique_ptr<RedisServer> redisserver;
+namespace {
+
+RedisServer redis_server;
 std::unique_ptr<ShardedServer> sharded_server;
 
-void handle_null(int) {
+void HandleNull(int) {
 }
-void handle_term(int signum) {
+
+void HandleTerm(int signum) {
 	LOG_INFO("Received signal `, initiating shutdown...", signum);
-	if (redisserver) {
-		redisserver->term();
-	}
+	redis_server.Term();
 	if (sharded_server) {
 		sharded_server->Term();
 	}
 }
+
+} // namespace
 
 int main(int argc, char** argv) {
 	gflags::ParseCommandLineFlags(&argc, &argv, true);
@@ -40,20 +48,13 @@ int main(int argc, char** argv) {
 	photon::PhotonOptions photon_options;
 	photon_options.use_pooled_stack_allocator = true;
 
-	// Try to initialize photon with io_uring first (best performance)
-	int ret = photon::init(
-		photon::INIT_EVENT_IOURING | photon::INIT_EVENT_SIGNAL,
-		photon::INIT_IO_NONE,
-		photon_options
-	);
+	// Initialize photon with io_uring first
+	int ret =
+	    photon::init(photon::INIT_EVENT_IOURING | photon::INIT_EVENT_SIGNAL, photon::INIT_IO_NONE, photon_options);
 	if (ret < 0) {
 		LOG_WARN("Failed to initialize photon with io_uring, falling back to epoll");
 		// Fallback to epoll if io_uring is not available
-		ret = photon::init(
-			photon::INIT_EVENT_EPOLL | photon::INIT_EVENT_SIGNAL,
-			photon::INIT_IO_NONE,
-			photon_options
-		);
+		ret = photon::init(photon::INIT_EVENT_EPOLL | photon::INIT_EVENT_SIGNAL, photon::INIT_IO_NONE, photon_options);
 		if (ret < 0) {
 			LOG_ERROR_RETURN(0, -1, "Failed to initialize photon with epoll");
 		}
@@ -63,18 +64,17 @@ int main(int argc, char** argv) {
 	}
 	DEFER(photon::fini());
 
-	photon::sync_signal(SIGPIPE, &handle_null);
-	photon::sync_signal(SIGTERM, &handle_term);
-	photon::sync_signal(SIGINT, &handle_term);
+	photon::sync_signal(SIGPIPE, &HandleNull);
+	photon::sync_signal(SIGTERM, &HandleTerm);
+	photon::sync_signal(SIGINT, &HandleTerm);
 
 	if (FLAGS_num_shards > 1) {
 		LOG_INFO("Starting in multi-threaded mode with ", FLAGS_num_shards, " shards");
-		sharded_server.reset(new ShardedServer(FLAGS_num_shards, FLAGS_port));
+		sharded_server = std::make_unique<ShardedServer>(FLAGS_num_shards, FLAGS_port);
 		return sharded_server->Run();
 	} else {
 		LOG_INFO("Starting in single-threaded mode");
-		redisserver.reset(new RedisServer());
-		return redisserver->run(FLAGS_port);
+		return redis_server.Run(FLAGS_port);
 	}
 
 	return 0;

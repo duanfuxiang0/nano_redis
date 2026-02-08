@@ -2,6 +2,7 @@
 #include "protocol/resp_parser.h"
 #include "command/command_registry.h"
 #include "command/string_family.h"
+#include "core/util.h"
 #include <photon/common/alog.h>
 #include <photon/common/alog-stdstring.h>
 #include <photon/common/utility.h>
@@ -12,29 +13,18 @@
 DECLARE_bool(tcp_nodelay);
 DECLARE_bool(use_iouring_tcp_server);
 
-RedisServer::RedisServer()
-    : server_(FLAGS_use_iouring_tcp_server ? photon::net::new_iouring_tcp_server()
-                                           : photon::net::new_tcp_socket_server()) {
-	if (server_ == nullptr && FLAGS_use_iouring_tcp_server) {
-		LOG_WARN("Failed to create io_uring TCP server, falling back to syscall TCP server");
-		server_.reset(photon::net::new_tcp_socket_server());
-	}
-	StringFamily::Register(&CommandRegistry::instance());
-	HashFamily::Register(&CommandRegistry::instance());
-	SetFamily::Register(&CommandRegistry::instance());
-	ListFamily::Register(&CommandRegistry::instance());
-}
+RedisServer::RedisServer() = default;
 
 RedisServer::~RedisServer() {
-	term();
+	Term();
 }
 
-std::string RedisServer::process_command(const std::vector<NanoObj>& args) {
-	CommandContext ctx(&store_, store_.CurrentDB());
-	return CommandRegistry::instance().execute(args, &ctx);
+std::string RedisServer::ProcessCommand(const std::vector<NanoObj>& args) {
+	CommandContext ctx(&store, store.CurrentDB());
+	return CommandRegistry::Instance().Execute(args, &ctx);
 }
 
-int RedisServer::handle_client(photon::net::ISocketStream* stream) {
+int RedisServer::HandleClient(photon::net::ISocketStream* stream) {
 	// LOG_INFO("New client connected");
 	if (stream == nullptr) {
 		return -1;
@@ -46,51 +36,72 @@ int RedisServer::handle_client(photon::net::ISocketStream* stream) {
 
 	RESPParser parser(stream);
 
+	std::vector<NanoObj> args;
 	while (true) {
-		std::vector<NanoObj> args;
-		int ret = parser.parse_command(args);
-
+		args.clear();
+		int ret = parser.ParseCommand(args);
 		if (ret < 0) {
-			// LOG_INFO("Client disconnected");
+			return 0;
+		}
+		if (args.empty()) {
+			continue;
+		}
+
+		// Handle QUIT early (before command execution)
+		const std::string_view cmd_sv = args[0].GetStringView();
+		if (!cmd_sv.empty() && EqualsIgnoreCase(cmd_sv, "QUIT")) {
+			const std::string& ok = RESPParser::OkResponse();
+			stream->send(ok.data(), ok.size());
+			st_usleep(10000);
 			return 0;
 		}
 
-		if (!args.empty()) {
-			// LOG_INFO("Received command: `", args[0].toString());
-			std::string response = process_command(args);
+		std::string response = ProcessCommand(args);
+		ssize_t written = stream->send(response.data(), response.size());
+		if (written < 0) {
+			LOG_ERRNO_RETURN(0, -1, "Failed to write response");
+		}
+	}
+}
 
-			std::string cmd_str = args[0].toString();
-			if (cmd_str == "QUIT") {
-				stream->send(response.data(), response.size());
-				st_usleep(10000);
-				return 0;
-			}
+int RedisServer::Run(int port) {
+	if (!command_families_registered) {
+		StringFamily::Register(&CommandRegistry::Instance());
+		HashFamily::Register(&CommandRegistry::Instance());
+		SetFamily::Register(&CommandRegistry::Instance());
+		ListFamily::Register(&CommandRegistry::Instance());
+		command_families_registered = true;
+	}
 
-			ssize_t written = stream->send(response.data(), response.size());
-			if (written < 0) {
-				LOG_ERRNO_RETURN(0, -1, "Failed to write response");
-			}
+	if (!server) {
+		server.reset(FLAGS_use_iouring_tcp_server ? photon::net::new_iouring_tcp_server()
+		                                          : photon::net::new_tcp_socket_server());
+		if (server == nullptr && FLAGS_use_iouring_tcp_server) {
+			LOG_WARN("Failed to create io_uring TCP server, falling back to syscall TCP server");
+			server.reset(photon::net::new_tcp_socket_server());
+		}
+		if (server == nullptr) {
+			LOG_ERROR_RETURN(0, -1, "Failed to create TCP server");
 		}
 	}
 
-	return 0;
-}
-
-int RedisServer::run(int port) {
-	if (server_->bind_v4any(port) < 0) {
+	if (server->bind_v4any(port) < 0) {
 		LOG_ERRNO_RETURN(0, -1, "Failed to bind port `", port);
 	}
-	if (server_->listen() < 0) {
+	if (server->listen() < 0) {
 		LOG_ERRNO_RETURN(0, -1, "Failed to listen");
 	}
-	
-	LOG_INFO("Started Redis server at `", server_->getsockname());
-	
-	server_->set_handler({this, &RedisServer::handle_client});
-	
-	return server_->start_loop(true);
+
+	LOG_INFO("Started Redis server at `", server->getsockname());
+
+	server->set_handler({this, &RedisServer::HandleClient});
+
+	return server->start_loop(true);
 }
 
-void RedisServer::term() {
-	server_->terminate();
+void RedisServer::Term() {
+	if (!server) {
+		return;
+	}
+	server->terminate();
 }

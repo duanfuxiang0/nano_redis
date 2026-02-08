@@ -17,16 +17,24 @@ struct CommandContext {
 	CommandContext() = default;
 
 	explicit CommandContext(Database* database, size_t index = 0)
-		: legacy_db(database), db_index(index), shard_count(1) {}
+	    : shard_count(1), db_index(index), legacy_db(database) {
+	}
 
 	CommandContext(EngineShard* shard, EngineShardSet* shard_set, size_t shard_count, size_t db_index = 0)
-		: local_shard(shard), shard_set(shard_set), shard_count(shard_count), db_index(db_index) {}
+	    : local_shard(shard), shard_set(shard_set), shard_count(shard_count), db_index(db_index) {
+	}
 
 	Database* GetDB() const;
-	size_t GetDBIndex() const { return db_index; }
-	size_t GetShardCount() const { return shard_count; }
+	size_t GetDBIndex() const {
+		return db_index;
+	}
+	size_t GetShardCount() const {
+		return shard_count;
+	}
 
-	bool IsSingleShard() const { return shard_count <= 1; }
+	bool IsSingleShard() const {
+		return shard_count <= 1;
+	}
 
 	// 直接返回远程分片的 Database* 会破坏无共享架构, 使用 shard_set->Await/Add 在所属线程执行
 	Database* GetShardDB(size_t shard_id) const;

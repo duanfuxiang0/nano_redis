@@ -25,9 +25,7 @@ TEST_F(TaskQueueAwaitTest, BasicAwaitInt) {
 	TaskQueue queue(4096, 1);
 	queue.Start("test");
 
-	int result = queue.Await([]() {
-		return 42;
-	});
+	int result = queue.Await([]() { return 42; });
 
 	EXPECT_EQ(result, 42);
 
@@ -38,9 +36,7 @@ TEST_F(TaskQueueAwaitTest, BasicAwaitString) {
 	TaskQueue queue(4096, 1);
 	queue.Start("test");
 
-	std::string result = queue.Await([]() {
-		return std::string("hello world");
-	});
+	std::string result = queue.Await([]() { return std::string("hello world"); });
 
 	EXPECT_EQ(result, "hello world");
 
@@ -52,9 +48,7 @@ TEST_F(TaskQueueAwaitTest, BasicAwaitVoid) {
 	queue.Start("test");
 
 	bool executed = false;
-	queue.Await([&executed]() {
-		executed = true;
-	});
+	queue.Await([&executed]() { executed = true; });
 
 	EXPECT_TRUE(executed);
 
@@ -65,13 +59,11 @@ TEST_F(TaskQueueAwaitTest, AwaitException) {
 	TaskQueue queue(4096, 1);
 	queue.Start("test");
 
-	EXPECT_THROW(
-		queue.Await([]() -> int {
-			throw std::runtime_error("test exception");
-			return 42;
-		}),
-		std::runtime_error
-	);
+	EXPECT_THROW(queue.Await([]() -> int {
+		throw std::runtime_error("test exception");
+		return 42;
+	}),
+	             std::runtime_error);
 
 	queue.Shutdown();
 }
@@ -81,9 +73,7 @@ TEST_F(TaskQueueAwaitTest, MultipleAwaits) {
 	queue.Start("test");
 
 	for (int i = 0; i < 10; ++i) {
-		int result = queue.Await([i]() {
-			return i * 2;
-		});
+		int result = queue.Await([i]() { return i * 2; });
 		EXPECT_EQ(result, i * 2);
 	}
 
@@ -94,21 +84,17 @@ TEST_F(TaskQueueAwaitTest, AwaitWithAddMixed) {
 	TaskQueue queue(4096, 1);
 	queue.Start("test");
 
-	std::atomic<int> counter{0};
+	std::atomic<int> counter {0};
 
 	// Add some fire-and-forget tasks
 	for (int i = 0; i < 5; ++i) {
-		queue.Add([&counter]() {
-			counter++;
-		});
+		queue.Add([&counter]() { counter++; });
 	}
 
 	// Await ensures all previous tasks are processed
-	int result = queue.Await([&counter]() {
-		return counter.load();
-	});
+	int result = queue.Await([&counter]() { return counter.load(); });
 
-	EXPECT_GE(result, 0);  // At least some tasks should be processed
+	EXPECT_GE(result, 0); // At least some tasks should be processed
 
 	queue.Shutdown();
 }
@@ -118,18 +104,16 @@ TEST_F(TaskQueueAwaitTest, MultipleConsumers) {
 	TaskQueue queue(4096, 4);
 	queue.Start("test");
 
-	std::atomic<int> counter{0};
+	std::atomic<int> counter {0};
 	const int kNumTasks = 100;
 
 	// Submit many tasks
 	for (int i = 0; i < kNumTasks; ++i) {
-		queue.Add([&counter]() {
-			counter++;
-		});
+		queue.Add([&counter]() { counter++; });
 	}
 
 	// Await to synchronize
-	queue.Await([&counter, kNumTasks]() {
+	queue.Await([&counter]() {
 		// Spin until all tasks are done
 		while (counter.load() < kNumTasks) {
 			photon::thread_yield();

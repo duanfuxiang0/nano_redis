@@ -9,12 +9,12 @@
 #include <photon/common/alog.h>
 #include <photon/thread/thread.h>
 
-ShardedServer::ShardedServer(size_t num_shards, uint16_t port)
-	: num_shards_(num_shards), port_(port), running_(false) {
-	StringFamily::Register(&CommandRegistry::instance());
-	HashFamily::Register(&CommandRegistry::instance());
-	SetFamily::Register(&CommandRegistry::instance());
-	ListFamily::Register(&CommandRegistry::instance());
+ShardedServer::ShardedServer(size_t num_shards_value, uint16_t port_value)
+    : num_shards(num_shards_value), port(port_value), running(false) {
+	StringFamily::Register(&CommandRegistry::Instance());
+	HashFamily::Register(&CommandRegistry::Instance());
+	SetFamily::Register(&CommandRegistry::Instance());
+	ListFamily::Register(&CommandRegistry::Instance());
 }
 
 ShardedServer::~ShardedServer() {
@@ -22,23 +22,23 @@ ShardedServer::~ShardedServer() {
 }
 
 int ShardedServer::Run() {
-	LOG_INFO("Starting ShardedServer with ` shards on port `", num_shards_, port_);
+	LOG_INFO("Starting ShardedServer with ` shards on port `", num_shards, port);
 	LOG_INFO("Architecture: Shared-Nothing (Dragonfly-style)");
-	LOG_INFO("  - ` vCPUs, each owning one shard", num_shards_);
+	LOG_INFO("  - ` vCPUs, each owning one shard", num_shards);
 	LOG_INFO("  - I/O distributed via SO_REUSEPORT");
 	LOG_INFO("  - Cross-shard requests via TaskQueue message passing");
 
-	proactor_pool_ = std::make_unique<ProactorPool>(num_shards_, port_);
-	if (!proactor_pool_->Start()) {
-		LOG_ERROR("Failed to start ShardedServer on port `", port_);
+	proactor_pool = std::make_unique<ProactorPool>(num_shards, port);
+	if (!proactor_pool->Start()) {
+		LOG_ERROR("Failed to start ShardedServer on port `", port);
 		Term();
 		return -1;
 	}
 
-	running_.store(true, std::memory_order_release);
+	running.store(true, std::memory_order_release);
 	LOG_INFO("ShardedServer running. Press Ctrl+C to stop.");
 
-	while (running_.load(std::memory_order_acquire)) {
+	while (running.load(std::memory_order_acquire)) {
 		photon::thread_usleep(100000);
 	}
 
@@ -47,15 +47,15 @@ int ShardedServer::Run() {
 }
 
 void ShardedServer::Stop() {
-	running_.store(false, std::memory_order_release);
+	running.store(false, std::memory_order_release);
 }
 
 void ShardedServer::Term() {
-	running_.store(false, std::memory_order_release);
-	if (proactor_pool_) {
-		proactor_pool_->Stop();
-		proactor_pool_->Join();
-		proactor_pool_.reset();
+	running.store(false, std::memory_order_release);
+	if (proactor_pool) {
+		proactor_pool->Stop();
+		proactor_pool->Join();
+		proactor_pool.reset();
 	}
 	LOG_INFO("ShardedServer terminated");
 }

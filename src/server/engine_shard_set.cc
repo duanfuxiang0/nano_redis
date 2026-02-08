@@ -3,11 +3,11 @@
 #include <photon/common/alog.h>
 
 EngineShardSet::EngineShardSet(size_t num_shards) {
-	shards_.reserve(num_shards);
+	shards.reserve(num_shards);
 	for (size_t i = 0; i < num_shards; ++i) {
-		shards_.emplace_back(new EngineShard(i));
+		shards.emplace_back(std::make_unique<EngineShard>(i));
 	}
-	LOG_INFO("EngineShardSet created with ` shards", num_shards);
+	LOG_INFO("EngineShardSet created with shards", num_shards);
 }
 
 EngineShardSet::~EngineShardSet() {
@@ -15,5 +15,5 @@ EngineShardSet::~EngineShardSet() {
 }
 
 void EngineShardSet::Stop() {
-	running_ = false;
+	running = false;
 }

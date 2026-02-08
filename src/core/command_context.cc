@@ -3,7 +3,9 @@
 #include "server/engine_shard_set.h"
 
 Database* CommandContext::GetDB() const {
-	if (local_shard) return &local_shard->GetDB();
+	if (local_shard) {
+		return &local_shard->GetDB();
+	}
 	return legacy_db;
 }
 
