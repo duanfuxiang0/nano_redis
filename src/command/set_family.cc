@@ -8,6 +8,11 @@
 #include <algorithm>
 
 namespace {
+using CommandMeta = CommandRegistry::CommandMeta;
+constexpr uint32_t kReadOnly = CommandRegistry::kCmdFlagReadOnly;
+constexpr uint32_t kWrite = CommandRegistry::kCmdFlagWrite;
+constexpr uint32_t kMultiKey = CommandRegistry::kCmdFlagMultiKey;
+
 bool AllKeysSameShard(const std::vector<NanoObj>& args, size_t first_key_index, CommandContext* ctx) {
 	if (ctx == nullptr) {
 		return true;
@@ -18,9 +23,9 @@ bool AllKeysSameShard(const std::vector<NanoObj>& args, size_t first_key_index, 
 	if (args.size() <= first_key_index) {
 		return true;
 	}
-	const size_t shard0 = Shard(args[first_key_index].toString(), ctx->GetShardCount());
+	const size_t shard0 = Shard(args[first_key_index].ToString(), ctx->GetShardCount());
 	for (size_t i = first_key_index + 1; i < args.size(); ++i) {
-		const size_t shard_i = Shard(args[i].toString(), ctx->GetShardCount());
+		const size_t shard_i = Shard(args[i].ToString(), ctx->GetShardCount());
 		if (shard_i != shard0) {
 			return false;
 		}
@@ -31,31 +36,44 @@ bool AllKeysSameShard(const std::vector<NanoObj>& args, size_t first_key_index, 
 
 void SetFamily::Register(CommandRegistry* registry) {
 	registry->RegisterCommandWithContext(
-	    "SADD", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SAdd(args, ctx); });
+	    "SADD", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SAdd(args, ctx); },
+	    CommandMeta {-3, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "SREM", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SRem(args, ctx); });
+	    "SREM", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SRem(args, ctx); },
+	    CommandMeta {-3, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "SPOP", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SPop(args, ctx); });
+	    "SPOP", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SPop(args, ctx); },
+	    CommandMeta {-2, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "SMEMBERS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SMembers(args, ctx); });
+	    "SMEMBERS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SMembers(args, ctx); },
+	    CommandMeta {2, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "SCARD", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SCard(args, ctx); });
+	    "SCARD", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SCard(args, ctx); },
+	    CommandMeta {2, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "SISMEMBER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SIsMember(args, ctx); });
+	    "SISMEMBER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SIsMember(args, ctx); },
+	    CommandMeta {3, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "SMISMEMBER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SMIsMember(args, ctx); });
+	    "SMISMEMBER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SMIsMember(args, ctx); },
+	    CommandMeta {-3, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "SINTER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SInter(args, ctx); });
+	    "SINTER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SInter(args, ctx); },
+	    CommandMeta {-2, 1, -1, 1, kReadOnly | kMultiKey});
 	registry->RegisterCommandWithContext(
-	    "SUNION", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SUnion(args, ctx); });
+	    "SUNION", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SUnion(args, ctx); },
+	    CommandMeta {-2, 1, -1, 1, kReadOnly | kMultiKey});
 	registry->RegisterCommandWithContext(
-	    "SDIFF", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SDiff(args, ctx); });
+	    "SDIFF", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SDiff(args, ctx); },
+	    CommandMeta {-2, 1, -1, 1, kReadOnly | kMultiKey});
 	registry->RegisterCommandWithContext(
-	    "SSCAN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SScan(args, ctx); });
+	    "SSCAN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SScan(args, ctx); },
+	    CommandMeta {-3, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "SRANDMEMBER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SRandMember(args, ctx); });
+	    "SRANDMEMBER", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SRandMember(args, ctx); },
+	    CommandMeta {-2, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "SMOVE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SMove(args, ctx); });
+	    "SMOVE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SMove(args, ctx); },
+	    CommandMeta {4, 1, 2, 1, kWrite | kMultiKey});
 }
 
 std::string SetFamily::SAdd(const std::vector<NanoObj>& args, CommandContext* ctx) {
@@ -68,21 +86,21 @@ std::string SetFamily::SAdd(const std::vector<NanoObj>& args, CommandContext* ct
 	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
-	if (set_obj == nullptr || !set_obj->isSet()) {
-		if (set_obj != nullptr && !set_obj->isSet()) {
+	if (set_obj == nullptr || !set_obj->IsSet()) {
+		if (set_obj != nullptr && !set_obj->IsSet()) {
 			db->Del(key);
 		}
 		auto set = new SetType();
-		NanoObj new_set = NanoObj::fromSet();
-		new_set.setObj(set);
+		NanoObj new_set = NanoObj::FromSet();
+		new_set.SetObj(set);
 		db->Set(key, std::move(new_set));
 		set_obj = db->Find(key);
 	}
 
-	auto set = set_obj->getObj<SetType>();
+	auto set = set_obj->GetObj<SetType>();
 	int added = 0;
 	for (size_t i = 2; i < args.size(); i++) {
-		std::string member = args[i].toString();
+		std::string member = args[i].ToString();
 		if (set->insert(member).second) {
 			added++;
 		}
@@ -101,14 +119,14 @@ std::string SetFamily::SRem(const std::vector<NanoObj>& args, CommandContext* ct
 	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
-	if (set_obj == nullptr || !set_obj->isSet()) {
+	if (set_obj == nullptr || !set_obj->IsSet()) {
 		return RESPParser::make_integer(0);
 	}
 
-	auto set = set_obj->getObj<SetType>();
+	auto set = set_obj->GetObj<SetType>();
 	int removed = 0;
 	for (size_t i = 2; i < args.size(); i++) {
-		std::string member = args[i].toString();
+		std::string member = args[i].ToString();
 		if (set->erase(member)) {
 			removed++;
 		}
@@ -131,11 +149,11 @@ std::string SetFamily::SPop(const std::vector<NanoObj>& args, CommandContext* ct
 	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
-	if (set_obj == nullptr || !set_obj->isSet()) {
+	if (set_obj == nullptr || !set_obj->IsSet()) {
 		return RESPParser::make_null_bulk_string();
 	}
 
-	auto set = set_obj->getObj<SetType>();
+	auto set = set_obj->GetObj<SetType>();
 
 	if (set->empty()) {
 		return RESPParser::make_null_bulk_string();
@@ -143,7 +161,7 @@ std::string SetFamily::SPop(const std::vector<NanoObj>& args, CommandContext* ct
 
 	int64_t count = 1;
 	if (args.size() == 3) {
-		if (!ParseLongLong(args[2].toString(), &count) || count < 0) {
+		if (!ParseLongLong(args[2].ToString(), &count) || count < 0) {
 			return RESPParser::make_error("count is not a valid positive integer");
 		}
 	}
@@ -172,11 +190,11 @@ std::string SetFamily::SMembers(const std::vector<NanoObj>& args, CommandContext
 	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
-	if (set_obj == nullptr || !set_obj->isSet()) {
+	if (set_obj == nullptr || !set_obj->IsSet()) {
 		return RESPParser::make_array(0);
 	}
 
-	auto set = set_obj->getObj<SetType>();
+	auto set = set_obj->GetObj<SetType>();
 
 	std::string result = RESPParser::make_array(static_cast<int64_t>(set->size()));
 	for (const auto& member : *set) {
@@ -196,11 +214,11 @@ std::string SetFamily::SCard(const std::vector<NanoObj>& args, CommandContext* c
 	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
-	if (set_obj == nullptr || !set_obj->isSet()) {
+	if (set_obj == nullptr || !set_obj->IsSet()) {
 		return RESPParser::make_integer(0);
 	}
 
-	auto set = set_obj->getObj<SetType>();
+	auto set = set_obj->GetObj<SetType>();
 	return RESPParser::make_integer(static_cast<int64_t>(set->size()));
 }
 
@@ -214,12 +232,12 @@ std::string SetFamily::SIsMember(const std::vector<NanoObj>& args, CommandContex
 	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
-	if (set_obj == nullptr || !set_obj->isSet()) {
+	if (set_obj == nullptr || !set_obj->IsSet()) {
 		return RESPParser::make_integer(0);
 	}
 
-	auto set = set_obj->getObj<SetType>();
-	std::string member = args[2].toString();
+	auto set = set_obj->GetObj<SetType>();
+	std::string member = args[2].ToString();
 
 	return RESPParser::make_integer(set->count(member) ? 1 : 0);
 }
@@ -236,16 +254,16 @@ std::string SetFamily::SMIsMember(const std::vector<NanoObj>& args, CommandConte
 
 	std::string result = RESPParser::make_array(static_cast<int64_t>(args.size() - 2));
 
-	if (set_obj == nullptr || !set_obj->isSet()) {
+	if (set_obj == nullptr || !set_obj->IsSet()) {
 		for (size_t i = 2; i < args.size(); i++) {
 			result += RESPParser::make_integer(0);
 		}
 		return result;
 	}
 
-	auto set = set_obj->getObj<SetType>();
+	auto set = set_obj->GetObj<SetType>();
 	for (size_t i = 2; i < args.size(); i++) {
-		std::string member = args[i].toString();
+		std::string member = args[i].ToString();
 		result += RESPParser::make_integer(set->count(member) ? 1 : 0);
 	}
 
@@ -269,11 +287,11 @@ std::string SetFamily::SInter(const std::vector<NanoObj>& args, CommandContext* 
 		const NanoObj& key = args[i];
 		auto* set_obj = db->Find(key);
 
-		if (set_obj == nullptr || !set_obj->isSet()) {
+		if (set_obj == nullptr || !set_obj->IsSet()) {
 			return RESPParser::make_array(0);
 		}
 
-		auto set = set_obj->getObj<SetType>();
+		auto set = set_obj->GetObj<SetType>();
 		sets.push_back(set);
 	}
 
@@ -313,8 +331,8 @@ std::string SetFamily::SUnion(const std::vector<NanoObj>& args, CommandContext* 
 		const NanoObj& key = args[i];
 		auto* set_obj = db->Find(key);
 
-		if (set_obj != nullptr && set_obj->isSet()) {
-			auto set = set_obj->getObj<SetType>();
+		if (set_obj != nullptr && set_obj->IsSet()) {
+			auto set = set_obj->GetObj<SetType>();
 			union_set.insert(set->begin(), set->end());
 		}
 	}
@@ -337,11 +355,11 @@ std::string SetFamily::SDiff(const std::vector<NanoObj>& args, CommandContext* c
 	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
-	if (set_obj == nullptr || !set_obj->isSet()) {
+	if (set_obj == nullptr || !set_obj->IsSet()) {
 		return RESPParser::make_array(0);
 	}
 
-	auto diff_set = *set_obj->getObj<SetType>();
+	auto diff_set = *set_obj->GetObj<SetType>();
 
 	if (!AllKeysSameShard(args, 1, ctx)) {
 		return RESPParser::make_error("CROSSSLOT Keys in request don't hash to the same slot");
@@ -351,8 +369,8 @@ std::string SetFamily::SDiff(const std::vector<NanoObj>& args, CommandContext* c
 		const NanoObj& other_key = args[i];
 		auto* other_set_obj = db->Find(other_key);
 
-		if (other_set_obj != nullptr && other_set_obj->isSet()) {
-			auto set = other_set_obj->getObj<SetType>();
+		if (other_set_obj != nullptr && other_set_obj->IsSet()) {
+			auto set = other_set_obj->GetObj<SetType>();
 			for (const auto& elem : *set) {
 				diff_set.erase(elem);
 			}
@@ -377,16 +395,16 @@ std::string SetFamily::SScan(const std::vector<NanoObj>& args, CommandContext* c
 	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
-	if (set_obj == nullptr || !set_obj->isSet()) {
+	if (set_obj == nullptr || !set_obj->IsSet()) {
 		return RESPParser::make_error("WRONGTYPE Operation against a key holding the wrong kind of value");
 	}
 
-	auto set = set_obj->getObj<SetType>();
+	auto set = set_obj->GetObj<SetType>();
 
 	uint64_t cursor = 0;
 	if (args.size() >= 3) {
 		try {
-			cursor = std::stoull(args[2].toString());
+			cursor = std::stoull(args[2].ToString());
 		} catch (...) {
 			return RESPParser::make_error("invalid cursor");
 		}
@@ -419,11 +437,11 @@ std::string SetFamily::SRandMember(const std::vector<NanoObj>& args, CommandCont
 	const NanoObj& key = args[1];
 	auto* set_obj = db->Find(key);
 
-	if (set_obj == nullptr || !set_obj->isSet()) {
+	if (set_obj == nullptr || !set_obj->IsSet()) {
 		return RESPParser::make_null_bulk_string();
 	}
 
-	auto set = set_obj->getObj<SetType>();
+	auto set = set_obj->GetObj<SetType>();
 
 	if (set->empty()) {
 		return RESPParser::make_null_bulk_string();
@@ -437,7 +455,7 @@ std::string SetFamily::SRandMember(const std::vector<NanoObj>& args, CommandCont
 	}
 
 	int64_t count = 1;
-	if (!ParseLongLong(args[2].toString(), &count)) {
+	if (!ParseLongLong(args[2].ToString(), &count)) {
 		return RESPParser::make_error("count is not a valid integer");
 	}
 
@@ -465,7 +483,7 @@ std::string SetFamily::SMove(const std::vector<NanoObj>& args, CommandContext* c
 	auto* db = ctx->GetDB();
 	const NanoObj& src_key = args[1];
 	const NanoObj& dest_key = args[2];
-	const std::string member = args[3].toString();
+	const std::string member = args[3].ToString();
 
 	if (!AllKeysSameShard(args, 1, ctx)) {
 		return RESPParser::make_error("CROSSSLOT Keys in request don't hash to the same slot");
@@ -473,11 +491,11 @@ std::string SetFamily::SMove(const std::vector<NanoObj>& args, CommandContext* c
 
 	auto* src_obj = db->Find(src_key);
 
-	if (src_obj == nullptr || !src_obj->isSet()) {
+	if (src_obj == nullptr || !src_obj->IsSet()) {
 		return RESPParser::make_integer(0);
 	}
 
-	auto src_set = src_obj->getObj<SetType>();
+	auto src_set = src_obj->GetObj<SetType>();
 
 	auto it = src_set->find(member);
 	if (it == src_set->end()) {
@@ -491,18 +509,18 @@ std::string SetFamily::SMove(const std::vector<NanoObj>& args, CommandContext* c
 	}
 
 	auto* dest_obj = db->Find(dest_key);
-	if (dest_obj == nullptr || !dest_obj->isSet()) {
-		if (dest_obj != nullptr && !dest_obj->isSet()) {
+	if (dest_obj == nullptr || !dest_obj->IsSet()) {
+		if (dest_obj != nullptr && !dest_obj->IsSet()) {
 			db->Del(dest_key);
 		}
 		auto dest_set = new SetType();
-		NanoObj new_set = NanoObj::fromSet();
-		new_set.setObj(dest_set);
+		NanoObj new_set = NanoObj::FromSet();
+		new_set.SetObj(dest_set);
 		db->Set(dest_key, std::move(new_set));
 		dest_obj = db->Find(dest_key);
 	}
 
-	auto dest_set = dest_obj->getObj<SetType>();
+	auto dest_set = dest_obj->GetObj<SetType>();
 	dest_set->insert(member);
 
 	return RESPParser::make_integer(1);

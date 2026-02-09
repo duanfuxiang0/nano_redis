@@ -196,7 +196,7 @@ TEST(RESPParserTest, ParseInlineCommand_LFOnly) {
 	int ret = parser.parse_command(args);
 	ASSERT_GE(ret, 0);
 	ASSERT_EQ(args.size(), 1U);
-	EXPECT_EQ(args[0].toString(), "PING");
+	EXPECT_EQ(args[0].ToString(), "PING");
 }
 
 TEST(RESPParserTest, ParseInlineCommand_SpansRecvBuffers) {
@@ -208,7 +208,7 @@ TEST(RESPParserTest, ParseInlineCommand_SpansRecvBuffers) {
 	int ret = parser.parse_command(args);
 	ASSERT_GE(ret, 0);
 	ASSERT_EQ(args.size(), 1U);
-	EXPECT_EQ(args[0].toString(), "PING");
+	EXPECT_EQ(args[0].ToString(), "PING");
 }
 
 TEST(RESPParserTest, ParseInlineCommand_CROnly) {
@@ -220,7 +220,7 @@ TEST(RESPParserTest, ParseInlineCommand_CROnly) {
 	int ret = parser.parse_command(args);
 	ASSERT_GE(ret, 0);
 	ASSERT_EQ(args.size(), 1U);
-	EXPECT_EQ(args[0].toString(), "PING");
+	EXPECT_EQ(args[0].ToString(), "PING");
 }
 
 TEST(RESPParserTest, ParseArrayWithBulkStrings_SpansRecvBuffers) {
@@ -233,6 +233,85 @@ TEST(RESPParserTest, ParseArrayWithBulkStrings_SpansRecvBuffers) {
 	int ret = parser.parse_command(args);
 	ASSERT_EQ(ret, 2);
 	ASSERT_EQ(args.size(), 2U);
-	EXPECT_EQ(args[0].toString(), "ECHO");
-	EXPECT_EQ(args[1].toString(), "hello world!");
+	EXPECT_EQ(args[0].ToString(), "ECHO");
+	EXPECT_EQ(args[1].ToString(), "hello world!");
+}
+
+TEST(RESPParserTest, HasBufferedDataForPipelinedCommands) {
+	const std::string pipelined = "*1\r\n$4\r\nPING\r\n*1\r\n$4\r\nPONG\r\n";
+	FakeSocketStream stream(pipelined, {pipelined.size()});
+	RESPParser parser(&stream);
+
+	std::vector<NanoObj> args;
+	int ret = parser.parse_command(args);
+	ASSERT_EQ(ret, 1);
+	ASSERT_EQ(args.size(), 1U);
+	EXPECT_EQ(args[0].ToString(), "PING");
+	EXPECT_TRUE(parser.has_buffered_data());
+
+	ret = parser.parse_command(args);
+	ASSERT_EQ(ret, 1);
+	ASSERT_EQ(args.size(), 1U);
+	EXPECT_EQ(args[0].ToString(), "PONG");
+	EXPECT_FALSE(parser.has_buffered_data());
+}
+
+TEST(RESPParserTest, TryParseCommandNoReadParsesCompleteBufferedCommand) {
+	const std::string pipelined = "*1\r\n$4\r\nPING\r\n*1\r\n$4\r\nPONG\r\n";
+	FakeSocketStream stream(pipelined, {pipelined.size()});
+	RESPParser parser(&stream);
+
+	std::vector<NanoObj> args;
+	int ret = parser.parse_command(args);
+	ASSERT_EQ(ret, 1);
+	ASSERT_EQ(args.size(), 1U);
+	EXPECT_EQ(args[0].ToString(), "PING");
+
+	auto status = parser.try_parse_command_no_read(args);
+	EXPECT_EQ(status, RESPParser::TryParseResult::OK);
+	ASSERT_EQ(args.size(), 1U);
+	EXPECT_EQ(args[0].ToString(), "PONG");
+
+	status = parser.try_parse_command_no_read(args);
+	EXPECT_EQ(status, RESPParser::TryParseResult::NEED_MORE);
+	EXPECT_TRUE(args.empty());
+}
+
+TEST(RESPParserTest, TryParseCommandNoReadNeedMoreKeepsPartialCommandBuffered) {
+	const std::string request = "*1\r\n$4\r\nPING\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n";
+	FakeSocketStream stream(request, {request.size()});
+	RESPParser parser(&stream);
+
+	std::vector<NanoObj> args;
+	int ret = parser.parse_command(args);
+	ASSERT_EQ(ret, 1);
+	ASSERT_EQ(args.size(), 1U);
+	EXPECT_EQ(args[0].ToString(), "PING");
+	EXPECT_TRUE(parser.has_buffered_data());
+
+	auto status = parser.try_parse_command_no_read(args);
+	EXPECT_EQ(status, RESPParser::TryParseResult::NEED_MORE);
+	EXPECT_TRUE(args.empty());
+	EXPECT_TRUE(parser.has_buffered_data());
+
+	status = parser.try_parse_command_no_read(args);
+	EXPECT_EQ(status, RESPParser::TryParseResult::NEED_MORE);
+	EXPECT_TRUE(args.empty());
+	EXPECT_TRUE(parser.has_buffered_data());
+}
+
+TEST(RESPParserTest, TryParseCommandNoReadReportsMalformedBufferedCommand) {
+	const std::string request = "*1\r\n$4\r\nPING\r\n*X\r\n";
+	FakeSocketStream stream(request, {request.size()});
+	RESPParser parser(&stream);
+
+	std::vector<NanoObj> args;
+	int ret = parser.parse_command(args);
+	ASSERT_EQ(ret, 1);
+	ASSERT_EQ(args.size(), 1U);
+	EXPECT_EQ(args[0].ToString(), "PING");
+
+	auto status = parser.try_parse_command_no_read(args);
+	EXPECT_EQ(status, RESPParser::TryParseResult::ERROR);
+	EXPECT_TRUE(args.empty());
 }

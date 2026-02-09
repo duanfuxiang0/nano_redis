@@ -4,35 +4,55 @@
 #include <cstdlib>
 #include <sstream>
 
+namespace {
+using CommandMeta = CommandRegistry::CommandMeta;
+constexpr uint32_t kReadOnly = CommandRegistry::kCmdFlagReadOnly;
+constexpr uint32_t kWrite = CommandRegistry::kCmdFlagWrite;
+} // namespace
+
 void HashFamily::Register(CommandRegistry* registry) {
 	registry->RegisterCommandWithContext(
-	    "HSET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HSet(args, ctx); });
+	    "HSET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HSet(args, ctx); },
+	    CommandMeta {-4, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "HGET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HGet(args, ctx); });
+	    "HGET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HGet(args, ctx); },
+	    CommandMeta {3, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "HMSET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HMSet(args, ctx); });
+	    "HMSET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HMSet(args, ctx); },
+	    CommandMeta {-4, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "HMGET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HMGet(args, ctx); });
+	    "HMGET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HMGet(args, ctx); },
+	    CommandMeta {-3, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "HDEL", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HDel(args, ctx); });
+	    "HDEL", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HDel(args, ctx); },
+	    CommandMeta {-3, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "HEXISTS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HExists(args, ctx); });
+	    "HEXISTS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HExists(args, ctx); },
+	    CommandMeta {3, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "HLEN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HLen(args, ctx); });
+	    "HLEN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HLen(args, ctx); },
+	    CommandMeta {2, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "HKEYS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HKeys(args, ctx); });
+	    "HKEYS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HKeys(args, ctx); },
+	    CommandMeta {2, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "HVALS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HVals(args, ctx); });
+	    "HVALS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HVals(args, ctx); },
+	    CommandMeta {2, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "HGETALL", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HGetAll(args, ctx); });
+	    "HGETALL", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HGetAll(args, ctx); },
+	    CommandMeta {2, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "HINCRBY", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HIncrBy(args, ctx); });
+	    "HINCRBY", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HIncrBy(args, ctx); },
+	    CommandMeta {4, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "HSTRLEN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HStrLen(args, ctx); });
+	    "HSTRLEN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HStrLen(args, ctx); },
+	    CommandMeta {3, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "HRANDFIELD", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HRandField(args, ctx); });
+	    "HRANDFIELD", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HRandField(args, ctx); },
+	    CommandMeta {-2, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "HSCAN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HScan(args, ctx); });
+	    "HSCAN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return HScan(args, ctx); },
+	    CommandMeta {-3, 1, 1, 1, kReadOnly});
 }
 
 std::string HashFamily::HSet(const std::vector<NanoObj>& args, CommandContext* ctx) {

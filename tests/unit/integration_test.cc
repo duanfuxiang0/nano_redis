@@ -20,10 +20,10 @@ protected:
 	}
 
 	std::string ExecuteCommand(const std::string& cmd, const std::vector<std::string>& args, CommandContext* ctx) {
-		std::vector<NanoObj> full_args = {NanoObj::fromKey(cmd)};
+		std::vector<NanoObj> full_args = {NanoObj::FromKey(cmd)};
 		full_args.reserve(1 + args.size());
 		for (const auto& arg : args) {
-			full_args.emplace_back(NanoObj::fromKey(arg));
+			full_args.emplace_back(NanoObj::FromKey(arg));
 		}
 		return registry->Execute(full_args, ctx);
 	}

@@ -1,4 +1,5 @@
 #include "server/proactor_pool.h"
+#include "server/connection.h"
 #include "server/engine_shard.h"
 #include "server/engine_shard_set.h"
 #include "server/sharding.h"
@@ -18,10 +19,45 @@
 #include <netinet/tcp.h>
 #include <unistd.h>
 #include <string_view>
+#include <algorithm>
+#include <chrono>
+#include <limits>
+#include <absl/container/flat_hash_map.h>
 #include <gflags/gflags.h>
 
 DECLARE_bool(tcp_nodelay);
 DECLARE_bool(use_iouring_tcp_server);
+
+namespace {
+
+constexpr size_t kPipelineFlushThresholdBytes = 16 * 1024;
+constexpr uint64_t kActiveExpireIntervalUsec = 100 * 1000;
+constexpr size_t kActiveExpireKeysPerDb = 32;
+
+using ConnectionMap = absl::flat_hash_map<uint64_t, Connection*>;
+thread_local ConnectionMap tlocal_connections;
+std::atomic<int64_t> g_pause_until_ms {0};
+
+int64_t CurrentTimeMs() {
+	using Clock = std::chrono::steady_clock;
+	using Milliseconds = std::chrono::milliseconds;
+	return std::chrono::duration_cast<Milliseconds>(Clock::now().time_since_epoch()).count();
+}
+
+void PauseIfNeeded() {
+	for (;;) {
+		const int64_t now_ms = CurrentTimeMs();
+		const int64_t pause_until_ms = g_pause_until_ms.load(std::memory_order_relaxed);
+		if (pause_until_ms <= now_ms) {
+			return;
+		}
+
+		const uint64_t sleep_usec = static_cast<uint64_t>(pause_until_ms - now_ms) * 1000;
+		photon::thread_usleep(sleep_usec);
+	}
+}
+
+} // namespace
 
 ProactorPool::ProactorPool(size_t num_vcpus_value, uint16_t port_value) : num_vcpus(num_vcpus_value), port(port_value) {
 	threads.reserve(num_vcpus);
@@ -95,6 +131,67 @@ photon::vcpu_base* ProactorPool::GetVcpu(size_t index) {
 		return vcpus[index];
 	}
 	return nullptr;
+}
+
+void ProactorPool::RegisterLocalConnection(Connection* connection) {
+	if (connection == nullptr) {
+		return;
+	}
+	tlocal_connections[connection->GetClientId()] = connection;
+}
+
+void ProactorPool::UnregisterLocalConnection(uint64_t client_id) {
+	(void)tlocal_connections.erase(client_id);
+}
+
+std::vector<ProactorPool::ClientSnapshot> ProactorPool::ListLocalConnections() {
+	const int64_t now_ms = CurrentTimeMs();
+	std::vector<ClientSnapshot> snapshots;
+	snapshots.reserve(tlocal_connections.size());
+	for (const auto& [client_id, connection] : tlocal_connections) {
+		if (connection == nullptr) {
+			continue;
+		}
+		ClientSnapshot snapshot;
+		snapshot.client_id = client_id;
+		snapshot.db_index = connection->GetDBIndex();
+		snapshot.client_name = connection->GetClientName();
+		snapshot.last_command = connection->GetLastCommand();
+		snapshot.age_sec = std::max<int64_t>(0, (now_ms - connection->GetConnectedAtMs()) / 1000);
+		snapshot.idle_sec = std::max<int64_t>(0, (now_ms - connection->GetLastActiveAtMs()) / 1000);
+		snapshot.close_requested = connection->IsCloseRequested();
+		snapshots.push_back(std::move(snapshot));
+	}
+	return snapshots;
+}
+
+bool ProactorPool::KillLocalConnectionById(uint64_t client_id) {
+	auto it = tlocal_connections.find(client_id);
+	if (it == tlocal_connections.end() || it->second == nullptr) {
+		return false;
+	}
+	it->second->RequestClose();
+	return true;
+}
+
+void ProactorPool::PauseClients(uint64_t timeout_ms) {
+	const int64_t now_ms = CurrentTimeMs();
+	const int64_t new_pause_until_ms = timeout_ms > static_cast<uint64_t>(std::numeric_limits<int64_t>::max() - now_ms)
+	                                       ? std::numeric_limits<int64_t>::max()
+	                                       : now_ms + static_cast<int64_t>(timeout_ms);
+
+	int64_t old_pause_until_ms = g_pause_until_ms.load(std::memory_order_relaxed);
+	while (old_pause_until_ms < new_pause_until_ms &&
+	       !g_pause_until_ms.compare_exchange_weak(old_pause_until_ms, new_pause_until_ms, std::memory_order_relaxed)) {
+	}
+}
+
+int64_t ProactorPool::PauseUntilMs() {
+	return g_pause_until_ms.load(std::memory_order_relaxed);
+}
+
+bool ProactorPool::IsPauseActive() {
+	return PauseUntilMs() > CurrentTimeMs();
 }
 
 void ProactorPool::VcpuMain(size_t vcpu_index) {
@@ -174,6 +271,17 @@ void ProactorPool::VcpuMain(size_t vcpu_index) {
 
 	shard->GetTaskQueue()->Start("shard-" + std::to_string(vcpu_index));
 
+	photon::join_handle* expiry_handle = nullptr;
+	if (auto* expiry_fiber = photon::thread_create11([this, shard]() {
+		    while (running.load()) {
+			    shard->GetDB().ActiveExpireCycle(kActiveExpireKeysPerDb);
+			    photon::thread_usleep(kActiveExpireIntervalUsec);
+		    }
+	    })) {
+		expiry_handle = photon::thread_enable_join(expiry_fiber);
+	}
+	DEFER(if (expiry_handle != nullptr) { photon::thread_join(expiry_handle); });
+
 	report_init(true);
 
 	server->set_handler({this, &ProactorPool::HandleConnection});
@@ -195,7 +303,10 @@ int ProactorPool::HandleConnection(photon::net::ISocketStream* stream) {
 	EngineShard* local_shard = EngineShard::Tlocal();
 	size_t vcpu_index = local_shard->ShardId();
 
-	RESPParser parser(stream);
+	Connection connection(stream);
+	RegisterLocalConnection(&connection);
+	DEFER(UnregisterLocalConnection(connection.GetClientId()));
+	CommandRegistry& registry = CommandRegistry::Instance();
 
 	std::vector<NanoObj> args;
 	args.reserve(8);
@@ -203,69 +314,131 @@ int ProactorPool::HandleConnection(photon::net::ISocketStream* stream) {
 	forwarded_args.reserve(8);
 
 	while (running) {
-		args.clear();
-		int ret = parser.ParseCommand(args);
-
-		if (ret < 0) {
+		PauseIfNeeded();
+		if (connection.IsCloseRequested()) {
 			return 0;
 		}
 
-		if (args.empty()) {
-			continue;
+		args.clear();
+		if (connection.ParseCommand(args) < 0) {
+			return 0;
+		}
+		bool should_close = false;
+		bool parse_error = false;
+		while (running) {
+			if (!args.empty()) {
+				PauseIfNeeded();
+				if (connection.IsCloseRequested()) {
+					should_close = true;
+					break;
+				}
+
+				const std::string_view cmd_sv = args[0].GetStringView();
+				if (!cmd_sv.empty()) {
+					connection.SetLastCommand(cmd_sv);
+				} else {
+					connection.SetLastCommand(args[0].ToString());
+				}
+				if (!cmd_sv.empty() && EqualsIgnoreCase(cmd_sv, "QUIT")) {
+					connection.AppendResponse(RESPParser::OkResponse());
+					should_close = true;
+				} else {
+					// IMPORTANT:
+					// Route requests to the owning shard based on the key. For same-shard requests, we can
+					// execute directly on the current vCPU (fast path). For cross-shard requests, we hop via
+					// TaskQueue to preserve shard ownership.
+					std::string response;
+					size_t target_shard = vcpu_index;
+					bool should_forward = false;
+
+					const CommandRegistry::CommandMeta* meta = nullptr;
+					if (!cmd_sv.empty()) {
+						meta = registry.FindMeta(cmd_sv);
+					} else {
+						meta = registry.FindMeta(args[0].ToString());
+					}
+
+					if (meta != nullptr) {
+						const bool is_no_key = (meta->flags & CommandRegistry::kCmdFlagNoKey) != 0;
+						const bool is_multi_key = (meta->flags & CommandRegistry::kCmdFlagMultiKey) != 0;
+						if (!is_no_key && !is_multi_key && meta->first_key > 0) {
+							size_t first_key_index = static_cast<size_t>(meta->first_key);
+							if (first_key_index < args.size()) {
+								// NOTE: keys may be INT_TAG internally; hash via string form.
+								const std::string key = args[first_key_index].ToString();
+								target_shard = Shard(key, num_vcpus);
+								should_forward = target_shard != vcpu_index;
+							}
+						}
+					}
+
+					if (!should_forward) {
+						CommandContext ctx(local_shard, shard_set.get(), num_vcpus, connection.GetDBIndex(),
+						                   &connection);
+						response = registry.Execute(args, &ctx);
+					} else {
+						// Avoid per-command heap churn:
+						// - Keep `args` capacity stable for parsing
+						// - Keep `forwarded_args` buffer stable across requests
+						// - Pass args by reference since Await() is synchronous
+						forwarded_args.clear();
+						forwarded_args.swap(args);
+						const size_t conn_db_index = connection.GetDBIndex();
+
+						response =
+						    shard_set->Await(target_shard, [this, &forwarded_args, conn_db_index]() -> std::string {
+							    EngineShard* shard = EngineShard::Tlocal();
+							    if (shard == nullptr) {
+								    return RESPParser::MakeError("ERR internal shard context");
+							    }
+							    CommandContext ctx(shard, shard_set.get(), num_vcpus, conn_db_index, nullptr);
+							    return CommandRegistry::Instance().Execute(forwarded_args, &ctx);
+						    });
+						forwarded_args.clear();
+					}
+
+					connection.AppendResponse(response);
+				}
+
+				// Keep args buffer reasonably sized.
+				if (args.capacity() < 8) {
+					args.reserve(8);
+				}
+			}
+
+			if (connection.PendingResponseBytes() >= kPipelineFlushThresholdBytes) {
+				if (!connection.Flush()) {
+					return -1;
+				}
+			}
+
+			if (should_close) {
+				break;
+			}
+
+			args.clear();
+			RESPParser::TryParseResult try_parse_result = connection.TryParseCommandNoRead(args);
+			if (try_parse_result == RESPParser::TryParseResult::OK) {
+				continue;
+			}
+			if (try_parse_result == RESPParser::TryParseResult::ERROR) {
+				parse_error = true;
+			}
+			break;
 		}
 
-		const std::string_view cmd_sv = args[0].GetStringView();
-		if (!cmd_sv.empty() && EqualsIgnoreCase(cmd_sv, "QUIT")) {
-			const std::string& ok = RESPParser::OkResponse();
-			stream->send(ok.data(), ok.size());
+		if (!connection.Flush()) {
+			return -1;
+		}
+		if (should_close) {
 			photon::thread_usleep(10000);
 			return 0;
 		}
-
-		// IMPORTANT:
-		// Route requests to the owning shard based on the key. For same-shard requests, we can
-		// execute directly on the current vCPU (fast path). For cross-shard requests, we hop via
-		// TaskQueue to preserve shard ownership.
-		std::string response;
-
-		size_t target_shard = vcpu_index;
-		if (args.size() >= 2) {
-			// NOTE: keys may be stored as INT_TAG internally, so don't use getStringView() here.
-			// Always hash using the string representation.
-			const std::string key = args[1].ToString();
-			target_shard = Shard(key, num_vcpus);
+		if (parse_error) {
+			return 0;
 		}
-
-		if (target_shard == vcpu_index) {
-			CommandContext ctx(local_shard, shard_set.get(), num_vcpus, local_shard->GetDB().CurrentDB());
-			response = CommandRegistry::Instance().Execute(args, &ctx);
-		} else {
-			// Avoid per-command heap churn:
-			// - Keep `args` capacity stable for parsing
-			// - Keep `forwarded_args` buffer stable across requests
-			// - Pass args by reference since Await() is synchronous
-			forwarded_args.clear();
-			forwarded_args.swap(args);
-
-			response = shard_set->Await(target_shard, [this, &forwarded_args]() -> std::string {
-				EngineShard* shard = EngineShard::Tlocal();
-				if (shard == nullptr) {
-					return RESPParser::MakeError("ERR internal shard context");
-				}
-				CommandContext ctx(shard, shard_set.get(), num_vcpus, shard->GetDB().CurrentDB());
-				return CommandRegistry::Instance().Execute(forwarded_args, &ctx);
-			});
-			forwarded_args.clear();
-		}
-
-		// Keep args buffer reasonably sized.
-		if (args.capacity() < 8) {
-			args.reserve(8);
-		}
-
-		ssize_t written = stream->send(response.data(), response.size());
-		if (written < 0) {
-			LOG_ERRNO_RETURN(0, -1, "Failed to write response");
+		if (connection.IsCloseRequested()) {
+			return 0;
 		}
 	}
 

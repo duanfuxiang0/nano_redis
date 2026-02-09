@@ -5,6 +5,7 @@
 #include "command/hash_family.h"
 #include "command/set_family.h"
 #include "command/list_family.h"
+#include "command/server_family.h"
 
 #include <photon/common/alog.h>
 #include <photon/thread/thread.h>
@@ -15,6 +16,7 @@ ShardedServer::ShardedServer(size_t num_shards_value, uint16_t port_value)
 	HashFamily::Register(&CommandRegistry::Instance());
 	SetFamily::Register(&CommandRegistry::Instance());
 	ListFamily::Register(&CommandRegistry::Instance());
+	ServerFamily::Register(&CommandRegistry::Instance());
 }
 
 ShardedServer::~ShardedServer() {

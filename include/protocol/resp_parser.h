@@ -8,6 +8,7 @@
 
 class RESPParser {
 public:
+	enum class TryParseResult { OK, NEED_MORE, ERROR };
 	enum class DataType { SIMPLE_STRING, ERROR, INTEGER, BULK_STRING, ARRAY, INLINE_COMMAND };
 
 	struct ParsedValue {
@@ -23,10 +24,22 @@ public:
 	}
 
 	int ParseCommand(std::vector<NanoObj>& args);
+	TryParseResult TryParseCommandNoRead(std::vector<NanoObj>& args);
+	bool HasBufferedData() const {
+		return buffer_pos < buffer_size;
+	}
 
 	// NOLINTNEXTLINE(readability-identifier-naming)
 	int parse_command(std::vector<NanoObj>& args) {
 		return ParseCommand(args);
+	}
+	// NOLINTNEXTLINE(readability-identifier-naming)
+	TryParseResult try_parse_command_no_read(std::vector<NanoObj>& args) {
+		return TryParseCommandNoRead(args);
+	}
+	// NOLINTNEXTLINE(readability-identifier-naming)
+	bool has_buffered_data() const {
+		return HasBufferedData();
 	}
 
 	static const std::string& OkResponse();
@@ -109,4 +122,6 @@ private:
 	char buffer[8192];
 	size_t buffer_pos = 0;
 	size_t buffer_size = 0;
+	bool allow_socket_read = true;
+	bool no_read_need_more = false;
 };

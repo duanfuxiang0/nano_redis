@@ -64,6 +64,8 @@ private:
 	bool NeedSplit(uint32_t seg_id) const;
 	size_t NextSeg(size_t sid) const;
 
+	// Extendible hashing directory slots can alias the same segment until a split,
+	// so ownership must be shared across multiple directory entries.
 	std::vector<std::shared_ptr<Segment>> segment_directory;
 	uint8_t global_depth;
 	uint64_t max_segment_size;

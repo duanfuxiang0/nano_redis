@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 #include <cstdint>
+#include <chrono>
 #include <string>
 #include <set>
+#include <thread>
 #include "core/database.h"
 #include "core/nano_obj.h"
 
@@ -11,57 +13,57 @@ protected:
 };
 
 TEST_F(DatabaseTest, SetAndGet) {
-	EXPECT_TRUE(db.Set(NanoObj::fromKey("key1"), "value1"));
-	const auto result = db.Get(NanoObj::fromKey("key1"));
-	ASSERT_EQ(result, std::optional<std::string>{"value1"});
+	EXPECT_TRUE(db.Set(NanoObj::FromKey("key1"), "value1"));
+	const auto result = db.Get(NanoObj::FromKey("key1"));
+	ASSERT_EQ(result, std::optional<std::string> {"value1"});
 }
 
 TEST_F(DatabaseTest, GetNonExistent) {
-	const auto result = db.Get(NanoObj::fromKey("nonexistent"));
+	const auto result = db.Get(NanoObj::FromKey("nonexistent"));
 	EXPECT_FALSE(result.has_value());
 }
 
 TEST_F(DatabaseTest, SetOverwrite) {
-	db.Set(NanoObj::fromKey("key1"), "value1");
-	db.Set(NanoObj::fromKey("key1"), "value2");
+	db.Set(NanoObj::FromKey("key1"), "value1");
+	db.Set(NanoObj::FromKey("key1"), "value2");
 
-	const auto result = db.Get(NanoObj::fromKey("key1"));
-	ASSERT_EQ(result, std::optional<std::string>{"value2"});
+	const auto result = db.Get(NanoObj::FromKey("key1"));
+	ASSERT_EQ(result, std::optional<std::string> {"value2"});
 }
 
 TEST_F(DatabaseTest, DeleteExisting) {
-	db.Set(NanoObj::fromKey("key1"), "value1");
-	EXPECT_TRUE(db.Del(NanoObj::fromKey("key1")));
+	db.Set(NanoObj::FromKey("key1"), "value1");
+	EXPECT_TRUE(db.Del(NanoObj::FromKey("key1")));
 
-	const auto result = db.Get(NanoObj::fromKey("key1"));
+	const auto result = db.Get(NanoObj::FromKey("key1"));
 	EXPECT_FALSE(result.has_value());
 }
 
 TEST_F(DatabaseTest, DeleteNonExistent) {
-	EXPECT_FALSE(db.Del(NanoObj::fromKey("nonexistent")));
+	EXPECT_FALSE(db.Del(NanoObj::FromKey("nonexistent")));
 }
 
 TEST_F(DatabaseTest, Exists) {
-	EXPECT_FALSE(db.Exists(NanoObj::fromKey("key1")));
+	EXPECT_FALSE(db.Exists(NanoObj::FromKey("key1")));
 
-	db.Set(NanoObj::fromKey("key1"), "value1");
-	EXPECT_TRUE(db.Exists(NanoObj::fromKey("key1")));
+	db.Set(NanoObj::FromKey("key1"), "value1");
+	EXPECT_TRUE(db.Exists(NanoObj::FromKey("key1")));
 
-	db.Del(NanoObj::fromKey("key1"));
-	EXPECT_FALSE(db.Exists(NanoObj::fromKey("key1")));
+	db.Del(NanoObj::FromKey("key1"));
+	EXPECT_FALSE(db.Exists(NanoObj::FromKey("key1")));
 }
 
 TEST_F(DatabaseTest, KeyCount) {
 	EXPECT_EQ(db.KeyCount(), 0);
 
-	db.Set(NanoObj::fromKey("key1"), "value1");
+	db.Set(NanoObj::FromKey("key1"), "value1");
 	EXPECT_EQ(db.KeyCount(), 1);
 
-	db.Set(NanoObj::fromKey("key2"), "value2");
-	db.Set(NanoObj::fromKey("key3"), "value3");
+	db.Set(NanoObj::FromKey("key2"), "value2");
+	db.Set(NanoObj::FromKey("key3"), "value3");
 	EXPECT_EQ(db.KeyCount(), 3);
 
-	db.Del(NanoObj::fromKey("key1"));
+	db.Del(NanoObj::FromKey("key1"));
 	EXPECT_EQ(db.KeyCount(), 2);
 }
 
@@ -86,48 +88,48 @@ TEST_F(DatabaseTest, SelectInvalidDatabase) {
 }
 
 TEST_F(DatabaseTest, MultipleDatabasesIsolation) {
-	db.Set(NanoObj::fromKey("key1"), "value1");
+	db.Set(NanoObj::FromKey("key1"), "value1");
 	EXPECT_EQ(db.KeyCount(), 1);
 
 	db.Select(1);
 	EXPECT_EQ(db.KeyCount(), 0);
 
-	db.Set(NanoObj::fromKey("key2"), "value2");
+	db.Set(NanoObj::FromKey("key2"), "value2");
 	EXPECT_EQ(db.KeyCount(), 1);
 
 	db.Select(0);
 	EXPECT_EQ(db.KeyCount(), 1);
 
-	auto result = db.Get(NanoObj::fromKey("key1"));
-	ASSERT_EQ(result, std::optional<std::string>{"value1"});
+	auto result = db.Get(NanoObj::FromKey("key1"));
+	ASSERT_EQ(result, std::optional<std::string> {"value1"});
 
 	db.Select(1);
-	result = db.Get(NanoObj::fromKey("key2"));
-	ASSERT_EQ(result, std::optional<std::string>{"value2"});
+	result = db.Get(NanoObj::FromKey("key2"));
+	ASSERT_EQ(result, std::optional<std::string> {"value2"});
 }
 
 TEST_F(DatabaseTest, ClearCurrentDatabase) {
-	db.Set(NanoObj::fromKey("key1"), "value1");
-	db.Set(NanoObj::fromKey("key2"), "value2");
+	db.Set(NanoObj::FromKey("key1"), "value1");
+	db.Set(NanoObj::FromKey("key2"), "value2");
 	EXPECT_EQ(db.KeyCount(), 2);
 
 	db.ClearCurrentDB();
 	EXPECT_EQ(db.KeyCount(), 0);
 
-	const auto result = db.Get(NanoObj::fromKey("key1"));
+	const auto result = db.Get(NanoObj::FromKey("key1"));
 	EXPECT_FALSE(result.has_value());
 }
 
 TEST_F(DatabaseTest, ClearAllDatabases) {
-	db.Set(NanoObj::fromKey("key1"), "value1");
+	db.Set(NanoObj::FromKey("key1"), "value1");
 	EXPECT_EQ(db.KeyCount(), 1);
 
 	db.Select(1);
-	db.Set(NanoObj::fromKey("key2"), "value2");
+	db.Set(NanoObj::FromKey("key2"), "value2");
 	EXPECT_EQ(db.KeyCount(), 1);
 
 	db.Select(2);
-	db.Set(NanoObj::fromKey("key3"), "value3");
+	db.Set(NanoObj::FromKey("key3"), "value3");
 	EXPECT_EQ(db.KeyCount(), 1);
 
 	db.ClearAll();
@@ -143,7 +145,7 @@ TEST_F(DatabaseTest, BulkInsert) {
 	for (uint32_t key_idx = 0; key_idx < n; ++key_idx) {
 		std::string key = "key" + std::to_string(key_idx);
 		std::string value = "value" + std::to_string(key_idx);
-		db.Set(NanoObj::fromKey(key), value);
+		db.Set(NanoObj::FromKey(key), value);
 	}
 
 	EXPECT_EQ(db.KeyCount(), n);
@@ -151,48 +153,48 @@ TEST_F(DatabaseTest, BulkInsert) {
 	for (uint32_t key_idx = 0; key_idx < n; ++key_idx) {
 		std::string key_str = "key" + std::to_string(key_idx);
 		std::string expected = "value" + std::to_string(key_idx);
-		const auto result = db.Get(NanoObj::fromKey(key_str));
-		ASSERT_EQ(result, std::optional<std::string>{expected});
+		const auto result = db.Get(NanoObj::FromKey(key_str));
+		ASSERT_EQ(result, std::optional<std::string> {expected});
 	}
 }
 
 TEST_F(DatabaseTest, MixedOperations) {
-	db.Set(NanoObj::fromKey("a"), "1");
-	db.Set(NanoObj::fromKey("b"), "2");
-	db.Set(NanoObj::fromKey("c"), "3");
+	db.Set(NanoObj::FromKey("a"), "1");
+	db.Set(NanoObj::FromKey("b"), "2");
+	db.Set(NanoObj::FromKey("c"), "3");
 
-	const auto result_a = db.Get(NanoObj::fromKey("a"));
-	ASSERT_EQ(result_a, std::optional<std::string>{"1"});
+	const auto result_a = db.Get(NanoObj::FromKey("a"));
+	ASSERT_EQ(result_a, std::optional<std::string> {"1"});
 
-	EXPECT_TRUE(db.Del(NanoObj::fromKey("b")));
-	EXPECT_FALSE(db.Exists(NanoObj::fromKey("b")));
+	EXPECT_TRUE(db.Del(NanoObj::FromKey("b")));
+	EXPECT_FALSE(db.Exists(NanoObj::FromKey("b")));
 
-	db.Set(NanoObj::fromKey("b"), "new2");
-	const auto result_b = db.Get(NanoObj::fromKey("b"));
-	ASSERT_EQ(result_b, std::optional<std::string>{"new2"});
+	db.Set(NanoObj::FromKey("b"), "new2");
+	const auto result_b = db.Get(NanoObj::FromKey("b"));
+	ASSERT_EQ(result_b, std::optional<std::string> {"new2"});
 
 	EXPECT_EQ(db.KeyCount(), 3);
 }
 
 TEST_F(DatabaseTest, SelectBackAndForth) {
-	db.Set(NanoObj::fromKey("db0_key"), "db0_value");
+	db.Set(NanoObj::FromKey("db0_key"), "db0_value");
 
 	db.Select(1);
-	db.Set(NanoObj::fromKey("db1_key"), "db1_value");
+	db.Set(NanoObj::FromKey("db1_key"), "db1_value");
 
 	db.Select(0);
-	auto result = db.Get(NanoObj::fromKey("db0_key"));
-	ASSERT_EQ(result, std::optional<std::string>{"db0_value"});
+	auto result = db.Get(NanoObj::FromKey("db0_key"));
+	ASSERT_EQ(result, std::optional<std::string> {"db0_value"});
 
 	db.Select(1);
-	result = db.Get(NanoObj::fromKey("db1_key"));
-	ASSERT_EQ(result, std::optional<std::string>{"db1_value"});
+	result = db.Get(NanoObj::FromKey("db1_key"));
+	ASSERT_EQ(result, std::optional<std::string> {"db1_value"});
 }
 
 TEST_F(DatabaseTest, Keys) {
-	db.Set(NanoObj::fromKey("key1"), "value1");
-	db.Set(NanoObj::fromKey("key2"), "value2");
-	db.Set(NanoObj::fromKey("key3"), "value3");
+	db.Set(NanoObj::FromKey("key1"), "value1");
+	db.Set(NanoObj::FromKey("key2"), "value2");
+	db.Set(NanoObj::FromKey("key3"), "value3");
 
 	const auto keys = db.Keys();
 	EXPECT_EQ(keys.size(), 3);
@@ -206,4 +208,55 @@ TEST_F(DatabaseTest, Keys) {
 TEST_F(DatabaseTest, KeysEmpty) {
 	const auto keys = db.Keys();
 	EXPECT_EQ(keys.size(), 0);
+}
+
+TEST_F(DatabaseTest, ExpireAndTTL) {
+	const NanoObj key = NanoObj::FromKey("ttl_key");
+	db.Set(key, "value");
+
+	EXPECT_TRUE(db.Expire(key, 2000));
+	int64_t ttl = db.TTL(key);
+	EXPECT_GE(ttl, 0);
+	EXPECT_LE(ttl, 2);
+}
+
+TEST_F(DatabaseTest, PersistRemovesTTL) {
+	const NanoObj key = NanoObj::FromKey("persist_key");
+	db.Set(key, "value");
+	EXPECT_TRUE(db.Expire(key, 5000));
+	EXPECT_GE(db.TTL(key), 0);
+
+	EXPECT_TRUE(db.Persist(key));
+	EXPECT_EQ(db.TTL(key), -1);
+	EXPECT_FALSE(db.Persist(key));
+}
+
+TEST_F(DatabaseTest, ExpireZeroDeletesKey) {
+	const NanoObj key = NanoObj::FromKey("delete_key");
+	db.Set(key, "value");
+
+	EXPECT_TRUE(db.Expire(key, 0));
+	EXPECT_FALSE(db.Exists(key));
+	EXPECT_EQ(db.TTL(key), -2);
+}
+
+TEST_F(DatabaseTest, ActiveExpireCycleRemovesExpiredKeys) {
+	const NanoObj key0 = NanoObj::FromKey("db0_key");
+	const NanoObj key1 = NanoObj::FromKey("db1_key");
+
+	db.Select(0);
+	db.Set(key0, "v0");
+	EXPECT_TRUE(db.Expire(key0, 1));
+
+	db.Select(1);
+	db.Set(key1, "v1");
+	EXPECT_TRUE(db.Expire(key1, 1));
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	EXPECT_GE(db.ActiveExpireCycle(64), 2U);
+
+	db.Select(0);
+	EXPECT_FALSE(db.Exists(key0));
+	db.Select(1);
+	EXPECT_FALSE(db.Exists(key1));
 }

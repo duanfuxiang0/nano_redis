@@ -5,7 +5,6 @@
 #include <photon/common/alog.h>
 #include <netinet/tcp.h>
 
-#include "server/server.h"
 #include "server/sharded_server.h"
 
 DEFINE_int32(port, 9527, "Server listen port");
@@ -25,7 +24,6 @@ extern "C" uint64_t nano_redis_photon_handler_stack_size() {
 
 namespace {
 
-RedisServer redis_server;
 std::unique_ptr<ShardedServer> sharded_server;
 
 void HandleNull(int) {
@@ -33,7 +31,6 @@ void HandleNull(int) {
 
 void HandleTerm(int signum) {
 	LOG_INFO("Received signal `, initiating shutdown...", signum);
-	redis_server.Term();
 	if (sharded_server) {
 		sharded_server->Term();
 	}
@@ -68,14 +65,12 @@ int main(int argc, char** argv) {
 	photon::sync_signal(SIGTERM, &HandleTerm);
 	photon::sync_signal(SIGINT, &HandleTerm);
 
-	if (FLAGS_num_shards > 1) {
-		LOG_INFO("Starting in multi-threaded mode with ", FLAGS_num_shards, " shards");
-		sharded_server = std::make_unique<ShardedServer>(FLAGS_num_shards, FLAGS_port);
-		return sharded_server->Run();
+	const size_t shard_count = FLAGS_num_shards > 0 ? static_cast<size_t>(FLAGS_num_shards) : 1;
+	if (shard_count == 1) {
+		LOG_INFO("Starting in unified server mode with single shard");
 	} else {
-		LOG_INFO("Starting in single-threaded mode");
-		return redis_server.Run(FLAGS_port);
+		LOG_INFO("Starting in unified server mode with ", shard_count, " shards");
 	}
-
-	return 0;
+	sharded_server = std::make_unique<ShardedServer>(shard_count, FLAGS_port);
+	return sharded_server->Run();
 }

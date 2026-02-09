@@ -9,16 +9,28 @@
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
+#include <string>
 
 #include <photon/thread/thread.h>
 #include <photon/net/socket.h>
 
 class EngineShard;
 class EngineShardSet;
+class Connection;
 
 // ProactorPool 管理 N 个 vCPU，每个 vCPU 拥有一个分片
 class ProactorPool {
 public:
+	struct ClientSnapshot {
+		uint64_t client_id = 0;
+		size_t db_index = 0;
+		std::string client_name;
+		std::string last_command;
+		int64_t age_sec = 0;
+		int64_t idle_sec = 0;
+		bool close_requested = false;
+	};
+
 	explicit ProactorPool(size_t num_vcpus, uint16_t port);
 	~ProactorPool();
 
@@ -37,6 +49,13 @@ public:
 		return shard_set.get();
 	}
 	photon::vcpu_base* GetVcpu(size_t index);
+	static void RegisterLocalConnection(Connection* connection);
+	static void UnregisterLocalConnection(uint64_t client_id);
+	static std::vector<ClientSnapshot> ListLocalConnections();
+	static bool KillLocalConnectionById(uint64_t client_id);
+	static void PauseClients(uint64_t timeout_ms);
+	static int64_t PauseUntilMs();
+	static bool IsPauseActive();
 
 private:
 	void VcpuMain(size_t vcpu_index);

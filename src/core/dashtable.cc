@@ -245,3 +245,4 @@ template class DashTable<std::string, NanoObj>;
 template class DashTable<int, int>;
 template class DashTable<int, double>;
 template class DashTable<NanoObj, NanoObj>;
+template class DashTable<NanoObj, int64_t>;

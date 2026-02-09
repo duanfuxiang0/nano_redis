@@ -16,7 +16,7 @@ class EngineShardSet;
 // - 其他线程通过 TaskQueue 通信
 class EngineShard {
 public:
-	static const size_t kNumDBs = 16;
+	static constexpr size_t kNumDBs = Database::kNumDBs;
 	using DbIndex = size_t;
 
 	explicit EngineShard(size_t shard_id);

@@ -2,6 +2,14 @@
 
 This file provides guidelines for AI coding agents working on the nano_redis codebase.
 
+## v1.1 Implementation Notes
+
+- The legacy `RedisServer` code path has been removed; `ShardedServer` is used for both `--num_shards=1` and multi-shard.
+- Request routing is metadata-driven via `CommandRegistry::CommandMeta` (arity/key positions/flags).
+- Pipeline batching is implemented via response buffering in `Connection` and no-read parsing via `RESPParser::TryParseCommandNoRead`.
+- TTL expiration is implemented via lazy expiry on reads + an active expire cycle on each shard.
+- Management commands live in `ServerFamily` (`INFO/CONFIG/CLIENT/TIME/RANDOMKEY`).
+
 ## Project Structure
 
 The project has a simple structure with three main directories:
@@ -40,6 +48,12 @@ cmake --build build -j
 ```bash
 ./build/unit_tests --gtest_filter=TestSuite.TestName
 ```
+
+### Common Gotchas
+
+- If you remove/rename source files, re-run `cmake -S . -B build ...` to regenerate build files (stale builds may still
+  reference deleted paths).
+- Prefer `git commit -m "..."` to avoid interactive editors in automated environments.
 
 ### Lint/Format
 ```bash

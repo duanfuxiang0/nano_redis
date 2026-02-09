@@ -6,29 +6,46 @@
 #include <vector>
 #include <algorithm>
 
+namespace {
+using CommandMeta = CommandRegistry::CommandMeta;
+constexpr uint32_t kReadOnly = CommandRegistry::kCmdFlagReadOnly;
+constexpr uint32_t kWrite = CommandRegistry::kCmdFlagWrite;
+} // namespace
+
 void ListFamily::Register(CommandRegistry* registry) {
 	registry->RegisterCommandWithContext(
-	    "LPUSH", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LPush(args, ctx); });
+	    "LPUSH", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LPush(args, ctx); },
+	    CommandMeta {-3, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "RPUSH", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return RPush(args, ctx); });
+	    "RPUSH", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return RPush(args, ctx); },
+	    CommandMeta {-3, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "LPOP", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LPop(args, ctx); });
+	    "LPOP", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LPop(args, ctx); },
+	    CommandMeta {-2, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "RPOP", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return RPop(args, ctx); });
+	    "RPOP", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return RPop(args, ctx); },
+	    CommandMeta {-2, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "LLEN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LLen(args, ctx); });
+	    "LLEN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LLen(args, ctx); },
+	    CommandMeta {2, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "LINDEX", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LIndex(args, ctx); });
+	    "LINDEX", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LIndex(args, ctx); },
+	    CommandMeta {3, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "LSET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LSet(args, ctx); });
+	    "LSET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LSet(args, ctx); },
+	    CommandMeta {4, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "LRANGE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LRange(args, ctx); });
+	    "LRANGE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LRange(args, ctx); },
+	    CommandMeta {4, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "LTRIM", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LTrim(args, ctx); });
+	    "LTRIM", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LTrim(args, ctx); },
+	    CommandMeta {4, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "LREM", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LRem(args, ctx); });
+	    "LREM", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LRem(args, ctx); },
+	    CommandMeta {4, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "LINSERT", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LInsert(args, ctx); });
+	    "LINSERT", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return LInsert(args, ctx); },
+	    CommandMeta {5, 1, 1, 1, kWrite});
 }
 
 std::string ListFamily::LPush(const std::vector<NanoObj>& args, CommandContext* ctx) {
@@ -41,18 +58,18 @@ std::string ListFamily::LPush(const std::vector<NanoObj>& args, CommandContext* 
 	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
-	if (list_obj == nullptr || !list_obj->isList()) {
-		if (list_obj != nullptr && !list_obj->isList()) {
+	if (list_obj == nullptr || !list_obj->IsList()) {
+		if (list_obj != nullptr && !list_obj->IsList()) {
 			db->Del(key);
 		}
 		auto list = new std::deque<NanoObj>();
-		NanoObj new_list = NanoObj::fromList();
-		new_list.setObj(list);
+		NanoObj new_list = NanoObj::FromList();
+		new_list.SetObj(list);
 		db->Set(key, std::move(new_list));
 		list_obj = db->Find(key);
 	}
 
-	auto list = list_obj->getObj<std::deque<NanoObj>>();
+	auto list = list_obj->GetObj<std::deque<NanoObj>>();
 
 	for (size_t i = 2; i < args.size(); i++) {
 		list->push_front(args[i]);
@@ -71,18 +88,18 @@ std::string ListFamily::RPush(const std::vector<NanoObj>& args, CommandContext* 
 	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
-	if (list_obj == nullptr || !list_obj->isList()) {
-		if (list_obj != nullptr && !list_obj->isList()) {
+	if (list_obj == nullptr || !list_obj->IsList()) {
+		if (list_obj != nullptr && !list_obj->IsList()) {
 			db->Del(key);
 		}
 		auto list = new std::deque<NanoObj>();
-		NanoObj new_list = NanoObj::fromList();
-		new_list.setObj(list);
+		NanoObj new_list = NanoObj::FromList();
+		new_list.SetObj(list);
 		db->Set(key, std::move(new_list));
 		list_obj = db->Find(key);
 	}
 
-	auto list = list_obj->getObj<std::deque<NanoObj>>();
+	auto list = list_obj->GetObj<std::deque<NanoObj>>();
 
 	for (size_t i = 2; i < args.size(); i++) {
 		list->push_back(args[i]);
@@ -101,11 +118,11 @@ std::string ListFamily::LPop(const std::vector<NanoObj>& args, CommandContext* c
 	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
-	if (list_obj == nullptr || !list_obj->isList()) {
+	if (list_obj == nullptr || !list_obj->IsList()) {
 		return RESPParser::make_null_bulk_string();
 	}
 
-	auto list = list_obj->getObj<std::deque<NanoObj>>();
+	auto list = list_obj->GetObj<std::deque<NanoObj>>();
 
 	if (list->empty()) {
 		return RESPParser::make_null_bulk_string();
@@ -113,13 +130,13 @@ std::string ListFamily::LPop(const std::vector<NanoObj>& args, CommandContext* c
 
 	int64_t count = 1;
 	if (args.size() == 3) {
-		if (!ParseLongLong(args[2].toString(), &count) || count < 0) {
+		if (!ParseLongLong(args[2].ToString(), &count) || count < 0) {
 			return RESPParser::make_error("count is not a valid positive integer");
 		}
 	}
 
 	if (count == 1) {
-		std::string result = list->front().toString();
+		std::string result = list->front().ToString();
 		list->pop_front();
 		if (list->empty()) {
 			db->Del(key);
@@ -129,7 +146,7 @@ std::string ListFamily::LPop(const std::vector<NanoObj>& args, CommandContext* c
 
 	std::string result = RESPParser::make_array(count);
 	for (int64_t i = 0; i < count && !list->empty(); i++) {
-		result += RESPParser::make_bulk_string(list->front().toString());
+		result += RESPParser::make_bulk_string(list->front().ToString());
 		list->pop_front();
 	}
 
@@ -150,11 +167,11 @@ std::string ListFamily::RPop(const std::vector<NanoObj>& args, CommandContext* c
 	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
-	if (list_obj == nullptr || !list_obj->isList()) {
+	if (list_obj == nullptr || !list_obj->IsList()) {
 		return RESPParser::make_null_bulk_string();
 	}
 
-	auto list = list_obj->getObj<std::deque<NanoObj>>();
+	auto list = list_obj->GetObj<std::deque<NanoObj>>();
 
 	if (list->empty()) {
 		return RESPParser::make_null_bulk_string();
@@ -162,13 +179,13 @@ std::string ListFamily::RPop(const std::vector<NanoObj>& args, CommandContext* c
 
 	int64_t count = 1;
 	if (args.size() == 3) {
-		if (!ParseLongLong(args[2].toString(), &count) || count < 0) {
+		if (!ParseLongLong(args[2].ToString(), &count) || count < 0) {
 			return RESPParser::make_error("count is not a valid positive integer");
 		}
 	}
 
 	if (count == 1) {
-		std::string result = list->back().toString();
+		std::string result = list->back().ToString();
 		list->pop_back();
 		if (list->empty()) {
 			db->Del(key);
@@ -178,7 +195,7 @@ std::string ListFamily::RPop(const std::vector<NanoObj>& args, CommandContext* c
 
 	std::string result = RESPParser::make_array(count);
 	for (int64_t i = 0; i < count && !list->empty(); i++) {
-		result += RESPParser::make_bulk_string(list->back().toString());
+		result += RESPParser::make_bulk_string(list->back().ToString());
 		list->pop_back();
 	}
 
@@ -199,11 +216,11 @@ std::string ListFamily::LLen(const std::vector<NanoObj>& args, CommandContext* c
 	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
-	if (list_obj == nullptr || !list_obj->isList()) {
+	if (list_obj == nullptr || !list_obj->IsList()) {
 		return RESPParser::make_integer(0);
 	}
 
-	auto list = list_obj->getObj<std::deque<NanoObj>>();
+	auto list = list_obj->GetObj<std::deque<NanoObj>>();
 	return RESPParser::make_integer(static_cast<int64_t>(list->size()));
 }
 
@@ -217,16 +234,16 @@ std::string ListFamily::LIndex(const std::vector<NanoObj>& args, CommandContext*
 	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
-	if (list_obj == nullptr || !list_obj->isList()) {
+	if (list_obj == nullptr || !list_obj->IsList()) {
 		return RESPParser::make_null_bulk_string();
 	}
 
 	int64_t index;
-	if (!ParseLongLong(args[2].toString(), &index)) {
+	if (!ParseLongLong(args[2].ToString(), &index)) {
 		return RESPParser::make_error("value is not an integer or out of range");
 	}
 
-	auto list = list_obj->getObj<std::deque<NanoObj>>();
+	auto list = list_obj->GetObj<std::deque<NanoObj>>();
 
 	if (index < 0) {
 		index += static_cast<int64_t>(list->size());
@@ -236,7 +253,7 @@ std::string ListFamily::LIndex(const std::vector<NanoObj>& args, CommandContext*
 		return RESPParser::make_null_bulk_string();
 	}
 
-	return RESPParser::make_bulk_string(list->at(index).toString());
+	return RESPParser::make_bulk_string(list->at(index).ToString());
 }
 
 std::string ListFamily::LSet(const std::vector<NanoObj>& args, CommandContext* ctx) {
@@ -249,16 +266,16 @@ std::string ListFamily::LSet(const std::vector<NanoObj>& args, CommandContext* c
 	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
-	if (list_obj == nullptr || !list_obj->isList()) {
+	if (list_obj == nullptr || !list_obj->IsList()) {
 		return RESPParser::make_error("no such key");
 	}
 
 	int64_t index;
-	if (!ParseLongLong(args[2].toString(), &index)) {
+	if (!ParseLongLong(args[2].ToString(), &index)) {
 		return RESPParser::make_error("value is not an integer or out of range");
 	}
 
-	auto list = list_obj->getObj<std::deque<NanoObj>>();
+	auto list = list_obj->GetObj<std::deque<NanoObj>>();
 
 	if (index < 0) {
 		index += static_cast<int64_t>(list->size());
@@ -282,16 +299,16 @@ std::string ListFamily::LRange(const std::vector<NanoObj>& args, CommandContext*
 	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
-	if (list_obj == nullptr || !list_obj->isList()) {
+	if (list_obj == nullptr || !list_obj->IsList()) {
 		return RESPParser::make_array(0);
 	}
 
 	int64_t start, stop;
-	if (!ParseLongLong(args[2].toString(), &start) || !ParseLongLong(args[3].toString(), &stop)) {
+	if (!ParseLongLong(args[2].ToString(), &start) || !ParseLongLong(args[3].ToString(), &stop)) {
 		return RESPParser::make_error("value is not an integer or out of range");
 	}
 
-	auto list = list_obj->getObj<std::deque<NanoObj>>();
+	auto list = list_obj->GetObj<std::deque<NanoObj>>();
 	int64_t len = static_cast<int64_t>(list->size());
 
 	if (start < 0) {
@@ -322,7 +339,7 @@ std::string ListFamily::LRange(const std::vector<NanoObj>& args, CommandContext*
 
 	std::string result = RESPParser::make_array(stop - start + 1);
 	for (int64_t i = start; i <= stop; i++) {
-		result += RESPParser::make_bulk_string(list->at(i).toString());
+		result += RESPParser::make_bulk_string(list->at(i).ToString());
 	}
 
 	return result;
@@ -338,16 +355,16 @@ std::string ListFamily::LTrim(const std::vector<NanoObj>& args, CommandContext* 
 	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
-	if (list_obj == nullptr || !list_obj->isList()) {
+	if (list_obj == nullptr || !list_obj->IsList()) {
 		return RESPParser::ok_response();
 	}
 
 	int64_t start, stop;
-	if (!ParseLongLong(args[2].toString(), &start) || !ParseLongLong(args[3].toString(), &stop)) {
+	if (!ParseLongLong(args[2].ToString(), &start) || !ParseLongLong(args[3].ToString(), &stop)) {
 		return RESPParser::make_error("value is not an integer or out of range");
 	}
 
-	auto list = list_obj->getObj<std::deque<NanoObj>>();
+	auto list = list_obj->GetObj<std::deque<NanoObj>>();
 	int64_t len = static_cast<int64_t>(list->size());
 
 	if (start < 0) {
@@ -392,23 +409,23 @@ std::string ListFamily::LRem(const std::vector<NanoObj>& args, CommandContext* c
 	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
-	if (list_obj == nullptr || !list_obj->isList()) {
+	if (list_obj == nullptr || !list_obj->IsList()) {
 		return RESPParser::make_integer(0);
 	}
 
 	int64_t count;
-	if (!ParseLongLong(args[2].toString(), &count)) {
+	if (!ParseLongLong(args[2].ToString(), &count)) {
 		return RESPParser::make_error("value is not an integer or out of range");
 	}
 
-	auto list = list_obj->getObj<std::deque<NanoObj>>();
-	std::string value = args[3].toString();
+	auto list = list_obj->GetObj<std::deque<NanoObj>>();
+	std::string value = args[3].ToString();
 
 	int removed = 0;
 	if (count == 0) {
 		auto it = list->begin();
 		while (it != list->end()) {
-			if (it->toString() == value) {
+			if (it->ToString() == value) {
 				it = list->erase(it);
 				removed++;
 			} else {
@@ -418,7 +435,7 @@ std::string ListFamily::LRem(const std::vector<NanoObj>& args, CommandContext* c
 	} else if (count > 0) {
 		auto it = list->begin();
 		while (it != list->end() && removed < count) {
-			if (it->toString() == value) {
+			if (it->ToString() == value) {
 				it = list->erase(it);
 				removed++;
 			} else {
@@ -429,7 +446,7 @@ std::string ListFamily::LRem(const std::vector<NanoObj>& args, CommandContext* c
 		auto it = list->end();
 		while (it != list->begin() && removed < -count) {
 			--it;
-			if (it->toString() == value) {
+			if (it->ToString() == value) {
 				it = list->erase(it);
 				removed++;
 			}
@@ -453,31 +470,31 @@ std::string ListFamily::LInsert(const std::vector<NanoObj>& args, CommandContext
 	const NanoObj& key = args[1];
 	auto* list_obj = db->Find(key);
 
-	if (list_obj == nullptr || !list_obj->isList()) {
+	if (list_obj == nullptr || !list_obj->IsList()) {
 		return RESPParser::make_integer(0);
 	}
 
-	std::string where = args[2].toString();
+	std::string where = args[2].ToString();
 	if (where != "BEFORE" && where != "AFTER") {
 		return RESPParser::make_error("syntax error");
 	}
 
-	std::string pivot = args[3].toString();
-	std::string value = args[4].toString();
+	std::string pivot = args[3].ToString();
+	std::string value = args[4].ToString();
 
-	auto list = list_obj->getObj<std::deque<NanoObj>>();
+	auto list = list_obj->GetObj<std::deque<NanoObj>>();
 
 	auto it =
-	    std::find_if(list->begin(), list->end(), [&pivot](const NanoObj& obj) { return obj.toString() == pivot; });
+	    std::find_if(list->begin(), list->end(), [&pivot](const NanoObj& obj) { return obj.ToString() == pivot; });
 
 	if (it == list->end()) {
 		return RESPParser::make_integer(-1);
 	}
 
 	if (where == "BEFORE") {
-		list->insert(it, NanoObj::fromKey(value));
+		list->insert(it, NanoObj::FromKey(value));
 	} else {
-		list->insert(it + 1, NanoObj::fromKey(value));
+		list->insert(it + 1, NanoObj::FromKey(value));
 	}
 
 	return RESPParser::make_integer(static_cast<int64_t>(list->size()));

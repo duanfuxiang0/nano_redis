@@ -68,20 +68,6 @@ public:
 	static NanoObj FromInt(int64_t val);
 	static NanoObj FromKey(std::string_view key);
 
-	// Backward-compatible wrappers (transitional).
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	static NanoObj fromString(std::string_view str) {
-		return FromString(str);
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	static NanoObj fromInt(int64_t val) {
-		return FromInt(val);
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	static NanoObj fromKey(std::string_view key) {
-		return FromKey(key);
-	}
-
 	char* PrepareStringBuffer(size_t len);
 	void FinalizePreparedString();
 	bool MaybeConvertToInt();
@@ -97,107 +83,24 @@ public:
 	bool IsList() const;
 	bool IsZset() const;
 
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	bool isNull() const {
-		return IsNull();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	bool isInt() const {
-		return IsInt();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	bool isString() const {
-		return IsString();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	bool isHash() const {
-		return IsHash();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	bool isSet() const {
-		return IsSet();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	bool isList() const {
-		return IsList();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	bool isZset() const {
-		return IsZset();
-	}
-
 	std::optional<std::string_view> TryToString() const;
 	std::optional<int64_t> TryToInt() const;
 	std::string ToString() const;
 	int64_t AsInt() const;
 
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	std::optional<std::string_view> tryToString() const {
-		return TryToString();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	std::optional<int64_t> tryToInt() const {
-		return TryToInt();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	std::string toString() const {
-		return ToString();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	int64_t asInt() const {
-		return AsInt();
-	}
-
 	uint8_t GetType() const;
 	uint8_t GetEncoding() const;
 	size_t Size() const;
 
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	uint8_t getType() const {
-		return GetType();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	uint8_t getEncoding() const {
-		return GetEncoding();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	size_t size() const {
-		return Size();
-	}
-
 	uint8_t GetTag() const;
 	uint8_t GetFlag() const;
-
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	uint8_t getTag() const {
-		return GetTag();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	uint8_t getFlag() const {
-		return GetFlag();
-	}
 
 	std::string_view GetStringView() const;
 	int64_t GetIntValue() const;
 
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	std::string_view getStringView() const {
-		return GetStringView();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	int64_t getIntValue() const {
-		return GetIntValue();
-	}
-
 	template <typename T>
 	T* GetObj() const {
 		return taglen == ROBJ_TAG ? static_cast<T*>(u.robj.inner_obj) : nullptr;
-	}
-
-	template <typename T>
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	T* getObj() const {
-		return GetObj<T>();
 	}
 
 	template <typename T>
@@ -211,55 +114,15 @@ public:
 		u.robj.inner_obj = obj;
 	}
 
-	template <typename T>
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	void setObj(T* obj) {
-		SetObj(obj);
-	}
-
 	static NanoObj FromHash();
 	static NanoObj FromSet();
 	static NanoObj FromList();
 	static NanoObj FromZset();
 
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	static NanoObj fromHash() {
-		return FromHash();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	static NanoObj fromSet() {
-		return FromSet();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	static NanoObj fromList() {
-		return FromList();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	static NanoObj fromZset() {
-		return FromZset();
-	}
-
 	void SetHash();
 	void SetSet();
 	void SetList();
 	void SetZset();
-
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	void setHash() {
-		SetHash();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	void setSet() {
-		SetSet();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	void setList() {
-		SetList();
-	}
-	// NOLINTNEXTLINE(readability-identifier-naming)
-	void setZset() {
-		SetZset();
-	}
 
 private:
 	void SetTag(uint8_t tag);
@@ -280,8 +143,8 @@ private:
 	void ResetToNull();
 	void InitRobj(uint8_t type, uint8_t encoding);
 
-	uint8_t taglen;           // for inline str len & TYPE
-	uint8_t flag;             // bitmap
+	uint8_t taglen;            // for inline str len & TYPE
+	uint8_t flag;              // bitmap
 	union U {                  // <= 14B
 		char data[kInlineLen]; // inline
 		SmallString small_str;

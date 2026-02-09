@@ -3,76 +3,150 @@
 #include "core/database.h"
 #include "core/command_context.h"
 #include "core/nano_obj.h"
+#include "core/util.h"
 #include "server/sharding.h"
 #include "server/engine_shard.h"
 #include "server/engine_shard_set.h"
 #include "protocol/resp_parser.h"
 #include <photon/common/alog.h>
-#include <iostream>
-#include <cstdlib>
-#include <unordered_map>
+#include <charconv>
+#include <limits>
 #include <optional>
+#include <system_error>
+#include <unordered_map>
+
+namespace {
+
+constexpr const char* kInvalidIntegerError = "value is not an integer or out of range";
+constexpr const char* kInvalidExpireTimeError = "invalid expire time in 'set' command";
+using CommandMeta = CommandRegistry::CommandMeta;
+constexpr uint32_t kReadOnly = CommandRegistry::kCmdFlagReadOnly;
+constexpr uint32_t kWrite = CommandRegistry::kCmdFlagWrite;
+constexpr uint32_t kAdmin = CommandRegistry::kCmdFlagAdmin;
+constexpr uint32_t kMultiKey = CommandRegistry::kCmdFlagMultiKey;
+constexpr uint32_t kNoKey = CommandRegistry::kCmdFlagNoKey;
+
+} // namespace
 
 void StringFamily::Register(CommandRegistry* registry) {
 	registry->RegisterCommandWithContext(
-	    "SET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Set(args, ctx); });
+	    "SET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Set(args, ctx); },
+	    CommandMeta {-3, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "GET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Get(args, ctx); });
+	    "GET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Get(args, ctx); },
+	    CommandMeta {2, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "DEL", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Del(args, ctx); });
+	    "DEL", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Del(args, ctx); },
+	    CommandMeta {-2, 1, -1, 1, kWrite | kMultiKey});
 	registry->RegisterCommandWithContext(
-	    "EXISTS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Exists(args, ctx); });
+	    "EXISTS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Exists(args, ctx); },
+	    CommandMeta {-2, 1, -1, 1, kReadOnly | kMultiKey});
 	registry->RegisterCommandWithContext(
-	    "MSET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return MSet(args, ctx); });
+	    "MSET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return MSet(args, ctx); },
+	    CommandMeta {-3, 1, -1, 2, kWrite | kMultiKey});
 	registry->RegisterCommandWithContext(
-	    "MGET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return MGet(args, ctx); });
+	    "MGET", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return MGet(args, ctx); },
+	    CommandMeta {-2, 1, -1, 1, kReadOnly | kMultiKey});
 	registry->RegisterCommandWithContext(
-	    "INCR", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Incr(args, ctx); });
+	    "INCR", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Incr(args, ctx); },
+	    CommandMeta {2, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "DECR", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Decr(args, ctx); });
+	    "DECR", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Decr(args, ctx); },
+	    CommandMeta {2, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "INCRBY", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return IncrBy(args, ctx); });
+	    "INCRBY", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return IncrBy(args, ctx); },
+	    CommandMeta {3, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "DECRBY", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return DecrBy(args, ctx); });
+	    "DECRBY", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return DecrBy(args, ctx); },
+	    CommandMeta {3, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "APPEND", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Append(args, ctx); });
+	    "APPEND", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Append(args, ctx); },
+	    CommandMeta {3, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "STRLEN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return StrLen(args, ctx); });
+	    "STRLEN", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return StrLen(args, ctx); },
+	    CommandMeta {2, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "GETRANGE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return GetRange(args, ctx); });
+	    "TYPE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Type(args, ctx); },
+	    CommandMeta {2, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "SETRANGE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SetRange(args, ctx); });
+	    "GETRANGE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return GetRange(args, ctx); },
+	    CommandMeta {4, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "SELECT", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Select(args, ctx); });
+	    "SETRANGE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return SetRange(args, ctx); },
+	    CommandMeta {4, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "KEYS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Keys(args, ctx); });
+	    "EXPIRE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Expire(args, ctx); },
+	    CommandMeta {3, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "FLUSHDB", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return FlushDB(args, ctx); });
+	    "TTL", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return TTL(args, ctx); },
+	    CommandMeta {2, 1, 1, 1, kReadOnly});
 	registry->RegisterCommandWithContext(
-	    "DBSIZE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return DBSize(args, ctx); });
+	    "PERSIST", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Persist(args, ctx); },
+	    CommandMeta {2, 1, 1, 1, kWrite});
 	registry->RegisterCommandWithContext(
-	    "PING", [](const std::vector<NanoObj>&, CommandContext*) { return RESPParser::pong_response(); });
+	    "SELECT", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Select(args, ctx); },
+	    CommandMeta {2, 0, 0, 0, kAdmin | kNoKey});
 	registry->RegisterCommandWithContext(
-	    "QUIT", [](const std::vector<NanoObj>&, CommandContext*) { return RESPParser::ok_response(); });
+	    "KEYS", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Keys(args, ctx); },
+	    CommandMeta {2, 0, 0, 0, kReadOnly | kNoKey});
 	registry->RegisterCommandWithContext(
-	    "HELLO", [](const std::vector<NanoObj>& args, CommandContext*) { return Hello(args); });
-	registry->RegisterCommandWithContext("COMMAND", [](const std::vector<NanoObj>&, CommandContext*) {
-		// Return empty array for COMMAND (used by redis-cli for command discovery)
-		return RESPParser::empty_array_response();
-	});
+	    "FLUSHDB", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return FlushDB(args, ctx); },
+	    CommandMeta {1, 0, 0, 0, kWrite | kAdmin | kNoKey});
+	registry->RegisterCommandWithContext(
+	    "DBSIZE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return DBSize(args, ctx); },
+	    CommandMeta {1, 0, 0, 0, kReadOnly | kNoKey});
+	registry->RegisterCommandWithContext(
+	    "PING", [](const std::vector<NanoObj>&, CommandContext*) { return RESPParser::pong_response(); },
+	    CommandMeta {-1, 0, 0, 0, kReadOnly | kNoKey});
+	registry->RegisterCommandWithContext(
+	    "QUIT", [](const std::vector<NanoObj>&, CommandContext*) { return RESPParser::ok_response(); },
+	    CommandMeta {1, 0, 0, 0, kNoKey});
+	registry->RegisterCommandWithContext(
+	    "HELLO", [](const std::vector<NanoObj>& args, CommandContext*) { return Hello(args); },
+	    CommandMeta {-1, 0, 0, 0, kReadOnly | kNoKey});
+	registry->RegisterCommandWithContext(
+	    "COMMAND",
+	    [registry](const std::vector<NanoObj>&, CommandContext*) { return registry->BuildCommandInfoResponse(); },
+	    CommandMeta {-1, 0, 0, 0, kReadOnly | kNoKey});
 }
 
 std::string StringFamily::Set(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	auto* db = ctx->GetDB();
 
-	if (args.size() != 3) {
+	if (args.size() != 3 && args.size() != 5) {
 		return RESPParser::make_error("wrong number of arguments for 'SET'");
 	}
 
 	const NanoObj& key = args[1];
 	const NanoObj& value = args[2];
 
+	int64_t ttl_ms = -1;
+	if (args.size() == 5) {
+		auto ttl_value = ParseInt(args[4].ToString());
+		if (!ttl_value || *ttl_value <= 0) {
+			return RESPParser::make_error(kInvalidExpireTimeError);
+		}
+
+		const std::string_view option = args[3].GetStringView();
+		if (EqualsIgnoreCase(option, "EX")) {
+			if (*ttl_value > std::numeric_limits<int64_t>::max() / 1000) {
+				ttl_ms = std::numeric_limits<int64_t>::max();
+			} else {
+				ttl_ms = *ttl_value * 1000;
+			}
+		} else if (EqualsIgnoreCase(option, "PX")) {
+			ttl_ms = *ttl_value;
+		} else {
+			return RESPParser::make_error("syntax error");
+		}
+	}
+
 	db->Set(key, NanoObj(value));
+	if (ttl_ms >= 0) {
+		(void)db->Expire(key, ttl_ms);
+	} else {
+		(void)db->Persist(key);
+	}
 	return RESPParser::ok_response();
 }
 
@@ -115,7 +189,7 @@ std::string StringFamily::Del(const std::vector<NanoObj>& args, CommandContext* 
 	shard_to_keys.reserve(args.size() - 1);
 
 	for (size_t i = 1; i < args.size(); ++i) {
-		std::string key = args[i].toString();
+		std::string key = args[i].ToString();
 		const size_t shard_id = Shard(key, ctx->GetShardCount());
 		shard_to_keys[shard_id].push_back(KeyReq {std::move(key)});
 	}
@@ -133,7 +207,7 @@ std::string StringFamily::Del(const std::vector<NanoObj>& args, CommandContext* 
 			    db.Select(db_index);
 			    int local_deleted = 0;
 			    for (const auto& k : keys) {
-				    if (db.Del(NanoObj::fromKey(k.key))) {
+				    if (db.Del(NanoObj::FromKey(k.key))) {
 					    ++local_deleted;
 				    }
 			    }
@@ -169,7 +243,7 @@ std::string StringFamily::Exists(const std::vector<NanoObj>& args, CommandContex
 	shard_to_keys.reserve(args.size() - 1);
 
 	for (size_t i = 1; i < args.size(); ++i) {
-		std::string key = args[i].toString();
+		std::string key = args[i].ToString();
 		const size_t shard_id = Shard(key, ctx->GetShardCount());
 		shard_to_keys[shard_id].push_back(KeyReq {std::move(key)});
 	}
@@ -186,7 +260,7 @@ std::string StringFamily::Exists(const std::vector<NanoObj>& args, CommandContex
 			    db.Select(db_index);
 			    int local_exists = 0;
 			    for (const auto& k : keys) {
-				    if (db.Exists(NanoObj::fromKey(k.key))) {
+				    if (db.Exists(NanoObj::FromKey(k.key))) {
 					    ++local_exists;
 				    }
 			    }
@@ -209,6 +283,7 @@ std::string StringFamily::MSet(const std::vector<NanoObj>& args, CommandContext*
 		auto* db = ctx->GetDB();
 		for (size_t i = 1; i < args.size(); i += 2) {
 			db->Set(args[i], NanoObj(args[i + 1]));
+			(void)db->Persist(args[i]);
 		}
 		return RESPParser::ok_response();
 	}
@@ -222,8 +297,8 @@ std::string StringFamily::MSet(const std::vector<NanoObj>& args, CommandContext*
 	shard_to_pairs.reserve(num_pairs);
 
 	for (size_t i = 1; i < args.size(); i += 2) {
-		std::string key = args[i].toString();
-		std::string value = args[i + 1].toString();
+		std::string key = args[i].ToString();
+		std::string value = args[i + 1].ToString();
 		const size_t shard_id = Shard(key, ctx->GetShardCount());
 		shard_to_pairs[shard_id].push_back(KvPair {std::move(key), std::move(value)});
 	}
@@ -237,7 +312,9 @@ std::string StringFamily::MSet(const std::vector<NanoObj>& args, CommandContext*
 			auto& db = shard->GetDB();
 			db.Select(db_index);
 			for (const auto& kv : pairs) {
-				db.Set(NanoObj::fromKey(kv.key), NanoObj::fromKey(kv.value));
+				NanoObj key = NanoObj::FromKey(kv.key);
+				db.Set(key, NanoObj::FromKey(kv.value));
+				(void)db.Persist(key);
 			}
 		});
 	}
@@ -275,7 +352,7 @@ std::string StringFamily::MGet(const std::vector<NanoObj>& args, CommandContext*
 	shard_to_reqs.reserve(num_keys);
 
 	for (size_t i = 1; i < args.size(); ++i) {
-		std::string key = args[i].toString();
+		std::string key = args[i].ToString();
 		const size_t shard_id = Shard(key, ctx->GetShardCount());
 		shard_to_reqs[shard_id].push_back(KeyReq {i - 1, std::move(key)});
 	}
@@ -296,7 +373,7 @@ std::string StringFamily::MGet(const std::vector<NanoObj>& args, CommandContext*
 			                                     auto& db = shard->GetDB();
 			                                     db.Select(db_index);
 			                                     for (const auto& req : reqs) {
-				                                     out.emplace_back(req.index, db.Get(NanoObj::fromKey(req.key)));
+				                                     out.emplace_back(req.index, db.Get(NanoObj::FromKey(req.key)));
 			                                     }
 			                                     return out;
 		                                     });
@@ -329,12 +406,16 @@ std::string StringFamily::Incr(const std::vector<NanoObj>& args, CommandContext*
 	int64_t new_value;
 	auto current = db->Get(key);
 	if (current) {
-		new_value = ParseInt(*current) + 1;
+		auto current_value = ParseInt(*current);
+		if (!current_value) {
+			return RESPParser::make_error(kInvalidIntegerError);
+		}
+		new_value = *current_value + 1;
 	} else {
 		new_value = 1;
 	}
 
-	db->Set(key, NanoObj::fromInt(new_value));
+	db->Set(key, NanoObj::FromInt(new_value));
 	return RESPParser::make_integer(new_value);
 }
 
@@ -349,12 +430,16 @@ std::string StringFamily::Decr(const std::vector<NanoObj>& args, CommandContext*
 	int64_t new_value;
 	auto current = db->Get(key);
 	if (current) {
-		new_value = ParseInt(*current) - 1;
+		auto current_value = ParseInt(*current);
+		if (!current_value) {
+			return RESPParser::make_error(kInvalidIntegerError);
+		}
+		new_value = *current_value - 1;
 	} else {
 		new_value = -1;
 	}
 
-	db->Set(key, NanoObj::fromInt(new_value));
+	db->Set(key, NanoObj::FromInt(new_value));
 	return RESPParser::make_integer(new_value);
 }
 
@@ -366,17 +451,24 @@ std::string StringFamily::IncrBy(const std::vector<NanoObj>& args, CommandContex
 	}
 
 	const NanoObj& key = args[1];
-	int64_t increment = ParseInt(args[2].toString());
+	auto increment = ParseInt(args[2].ToString());
+	if (!increment) {
+		return RESPParser::make_error(kInvalidIntegerError);
+	}
 
 	int64_t new_value;
 	auto current = db->Get(key);
 	if (current) {
-		new_value = ParseInt(*current) + increment;
+		auto current_value = ParseInt(*current);
+		if (!current_value) {
+			return RESPParser::make_error(kInvalidIntegerError);
+		}
+		new_value = *current_value + *increment;
 	} else {
-		new_value = increment;
+		new_value = *increment;
 	}
 
-	db->Set(key, NanoObj::fromInt(new_value));
+	db->Set(key, NanoObj::FromInt(new_value));
 	return RESPParser::make_integer(new_value);
 }
 
@@ -385,9 +477,27 @@ std::string StringFamily::DecrBy(const std::vector<NanoObj>& args, CommandContex
 		return RESPParser::make_error("wrong number of arguments for 'DECRBY'");
 	}
 
-	std::string neg_val = "-" + args[2].toString();
-	std::vector<NanoObj> incr_args = {args[0], args[1], NanoObj::fromKey(neg_val)};
-	return IncrBy(incr_args, ctx);
+	auto* db = ctx->GetDB();
+	auto decrement = ParseInt(args[2].ToString());
+	if (!decrement) {
+		return RESPParser::make_error(kInvalidIntegerError);
+	}
+
+	const NanoObj& key = args[1];
+	int64_t new_value;
+	auto current = db->Get(key);
+	if (current) {
+		auto current_value = ParseInt(*current);
+		if (!current_value) {
+			return RESPParser::make_error(kInvalidIntegerError);
+		}
+		new_value = *current_value - *decrement;
+	} else {
+		new_value = -*decrement;
+	}
+
+	db->Set(key, NanoObj::FromInt(new_value));
+	return RESPParser::make_integer(new_value);
 }
 
 std::string StringFamily::Append(const std::vector<NanoObj>& args, CommandContext* ctx) {
@@ -403,12 +513,12 @@ std::string StringFamily::Append(const std::vector<NanoObj>& args, CommandContex
 	std::string new_value;
 	auto current = db->Get(key);
 	if (current) {
-		new_value = *current + value.toString();
+		new_value = *current + value.ToString();
 	} else {
-		new_value = value.toString();
+		new_value = value.ToString();
 	}
 
-	db->Set(key, NanoObj::fromKey(new_value));
+	db->Set(key, NanoObj::FromKey(new_value));
 	return RESPParser::make_integer(static_cast<int64_t>(new_value.length()));
 }
 
@@ -427,6 +537,33 @@ std::string StringFamily::StrLen(const std::vector<NanoObj>& args, CommandContex
 	}
 }
 
+std::string StringFamily::Type(const std::vector<NanoObj>& args, CommandContext* ctx) {
+	if (args.size() != 2) {
+		return RESPParser::make_error("wrong number of arguments for 'TYPE'");
+	}
+
+	auto* db = ctx->GetDB();
+	const NanoObj* value = db->Find(args[1]);
+	if (value == nullptr) {
+		return RESPParser::make_simple_string("none");
+	}
+
+	switch (value->GetType()) {
+	case OBJ_STRING:
+		return RESPParser::make_simple_string("string");
+	case OBJ_HASH:
+		return RESPParser::make_simple_string("hash");
+	case OBJ_SET:
+		return RESPParser::make_simple_string("set");
+	case OBJ_LIST:
+		return RESPParser::make_simple_string("list");
+	case OBJ_ZSET:
+		return RESPParser::make_simple_string("zset");
+	default:
+		return RESPParser::make_simple_string("none");
+	}
+}
+
 std::string StringFamily::GetRange(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	auto* db = ctx->GetDB();
 
@@ -435,8 +572,11 @@ std::string StringFamily::GetRange(const std::vector<NanoObj>& args, CommandCont
 	}
 
 	const NanoObj& key = args[1];
-	int64_t start = ParseInt(args[2].toString());
-	int64_t end = ParseInt(args[3].toString());
+	auto start = ParseInt(args[2].ToString());
+	auto end = ParseInt(args[3].ToString());
+	if (!start || !end) {
+		return RESPParser::make_error(kInvalidIntegerError);
+	}
 
 	auto val = db->Get(key);
 	if (!val) {
@@ -446,15 +586,15 @@ std::string StringFamily::GetRange(const std::vector<NanoObj>& args, CommandCont
 	std::string s = *val;
 	int64_t len = static_cast<int64_t>(s.length());
 
-	start = AdjustIndex(start, len);
-	end = AdjustIndex(end, len);
+	int64_t adjusted_start = AdjustIndex(*start, len);
+	int64_t adjusted_end = AdjustIndex(*end, len);
 
-	if (start > end) {
+	if (adjusted_start > adjusted_end) {
 		return RESPParser::make_bulk_string("");
 	}
 
 	std::string result =
-	    s.substr(static_cast<size_t>(start), static_cast<size_t>(end - start + 1));
+	    s.substr(static_cast<size_t>(adjusted_start), static_cast<size_t>(adjusted_end - adjusted_start + 1));
 	return RESPParser::make_bulk_string(result);
 }
 
@@ -466,7 +606,10 @@ std::string StringFamily::SetRange(const std::vector<NanoObj>& args, CommandCont
 	}
 
 	const NanoObj& key = args[1];
-	int64_t offset = ParseInt(args[2].toString());
+	auto offset = ParseInt(args[2].ToString());
+	if (!offset) {
+		return RESPParser::make_error(kInvalidIntegerError);
+	}
 	const NanoObj& value = args[3];
 
 	std::string new_value;
@@ -475,12 +618,12 @@ std::string StringFamily::SetRange(const std::vector<NanoObj>& args, CommandCont
 		new_value = *current;
 	}
 
-	if (offset < 0) {
-		offset = 0;
+	if (*offset < 0) {
+		*offset = 0;
 	}
 
-	std::string value_str = value.toString();
-	size_t offset_sz = static_cast<size_t>(offset);
+	std::string value_str = value.ToString();
+	size_t offset_sz = static_cast<size_t>(*offset);
 	size_t new_length = std::max(new_value.length(), offset_sz + value_str.length());
 	new_value.resize(new_length, '\0');
 
@@ -488,30 +631,89 @@ std::string StringFamily::SetRange(const std::vector<NanoObj>& args, CommandCont
 		new_value[offset_sz + i] = value_str[i];
 	}
 
-	db->Set(key, NanoObj::fromKey(new_value));
+	db->Set(key, NanoObj::FromKey(new_value));
 	return RESPParser::make_integer(static_cast<int64_t>(new_value.length()));
 }
 
-std::string StringFamily::Select(const std::vector<NanoObj>& args, CommandContext* ctx) {
-	auto* db = ctx->GetDB();
+std::string StringFamily::Expire(const std::vector<NanoObj>& args, CommandContext* ctx) {
+	if (args.size() != 3) {
+		return RESPParser::make_error("wrong number of arguments for 'EXPIRE'");
+	}
 
+	auto* db = ctx->GetDB();
+	auto seconds = ParseInt(args[2].ToString());
+	if (!seconds) {
+		return RESPParser::make_error(kInvalidIntegerError);
+	}
+
+	int64_t ttl_ms = 0;
+	if (*seconds > 0) {
+		if (*seconds > std::numeric_limits<int64_t>::max() / 1000) {
+			ttl_ms = std::numeric_limits<int64_t>::max();
+		} else {
+			ttl_ms = *seconds * 1000;
+		}
+	}
+
+	return RESPParser::make_integer(db->Expire(args[1], ttl_ms) ? 1 : 0);
+}
+
+std::string StringFamily::TTL(const std::vector<NanoObj>& args, CommandContext* ctx) {
+	if (args.size() != 2) {
+		return RESPParser::make_error("wrong number of arguments for 'TTL'");
+	}
+
+	auto* db = ctx->GetDB();
+	return RESPParser::make_integer(db->TTL(args[1]));
+}
+
+std::string StringFamily::Persist(const std::vector<NanoObj>& args, CommandContext* ctx) {
+	if (args.size() != 2) {
+		return RESPParser::make_error("wrong number of arguments for 'PERSIST'");
+	}
+
+	auto* db = ctx->GetDB();
+	return RESPParser::make_integer(db->Persist(args[1]) ? 1 : 0);
+}
+
+std::string StringFamily::Select(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	if (args.size() != 2) {
 		return RESPParser::make_error("wrong number of arguments for 'SELECT'");
 	}
 
-	size_t db_index = static_cast<size_t>(ParseInt(args[1].toString()));
+	auto db_index = ParseInt(args[1].ToString());
+	if (!db_index) {
+		return RESPParser::make_error(kInvalidIntegerError);
+	}
+	if (*db_index < 0) {
+		return RESPParser::make_error("DB index out of range");
+	}
+	size_t db_index_size_t = static_cast<size_t>(*db_index);
+	if (db_index_size_t >= Database::kNumDBs) {
+		return RESPParser::make_error("DB index out of range");
+	}
+
+	if (ctx->connection != nullptr) {
+		if (!ctx->connection->SetDBIndex(db_index_size_t)) {
+			return RESPParser::make_error("DB index out of range");
+		}
+		ctx->db_index = db_index_size_t;
+		return RESPParser::ok_response();
+	}
+
+	auto* db = ctx->GetDB();
 
 	// In sharded mode we keep database selection consistent across all shards
 	// (current implementation is global, not per-connection).
 	if (ctx->shard_set && !ctx->IsSingleShard()) {
 		for (size_t shard_id = 0; shard_id < ctx->shard_set->Size(); ++shard_id) {
-			bool ok = ctx->shard_set->Await(shard_id, [db_index]() -> bool {
+			bool ok = ctx->shard_set->Await(shard_id, [db_index_size_t]() -> bool {
 				EngineShard* shard = EngineShard::Tlocal();
 				if (shard == nullptr) {
 					return false;
 				}
 				auto& shard_db = shard->GetDB();
-				return shard_db.Select(db_index);
+				return shard_db.Select(db_index_size_t);
 			});
 
 			if (!ok) {
@@ -519,23 +721,46 @@ std::string StringFamily::Select(const std::vector<NanoObj>& args, CommandContex
 			}
 		}
 
+		ctx->db_index = db_index_size_t;
 		return RESPParser::ok_response();
 	}
 
-	if (!db->Select(db_index)) {
+	if (!db->Select(db_index_size_t)) {
 		return RESPParser::make_error("DB index out of range");
 	}
 
+	ctx->db_index = db_index_size_t;
 	return RESPParser::ok_response();
 }
 
 std::string StringFamily::Keys(const std::vector<NanoObj>& args, CommandContext* ctx) {
 	(void)args;
-	auto* db = ctx->GetDB();
+	if (!ctx->shard_set || ctx->IsSingleShard()) {
+		auto* db = ctx->GetDB();
+		std::vector<std::string> keys = db->Keys();
+		std::string response = RESPParser::make_array(static_cast<int64_t>(keys.size()));
+		for (const auto& key : keys) {
+			response += RESPParser::make_bulk_string(key);
+		}
+		return response;
+	}
 
-	std::vector<std::string> keys = db->Keys();
-	std::string response = RESPParser::make_array(static_cast<int64_t>(keys.size()));
-	for (const auto& key : keys) {
+	std::vector<std::string> all_keys;
+	for (size_t shard_id = 0; shard_id < ctx->shard_set->Size(); ++shard_id) {
+		auto shard_keys = ctx->shard_set->Await(shard_id, [db_index = ctx->GetDBIndex()]() -> std::vector<std::string> {
+			EngineShard* shard = EngineShard::Tlocal();
+			if (!shard) {
+				return {};
+			}
+			auto& db = shard->GetDB();
+			db.Select(db_index);
+			return db.Keys();
+		});
+		all_keys.insert(all_keys.end(), shard_keys.begin(), shard_keys.end());
+	}
+
+	std::string response = RESPParser::make_array(static_cast<int64_t>(all_keys.size()));
+	for (const auto& key : all_keys) {
 		response += RESPParser::make_bulk_string(key);
 	}
 	return response;
@@ -550,7 +775,7 @@ std::string StringFamily::FlushDB(const std::vector<NanoObj>& args, CommandConte
 	}
 
 	for (size_t shard_id = 0; shard_id < ctx->shard_set->Size(); ++shard_id) {
-		ctx->shard_set->Add(shard_id, [db_index = ctx->GetDBIndex()]() {
+		ctx->shard_set->Await(shard_id, [db_index = ctx->GetDBIndex()]() {
 			EngineShard* shard = EngineShard::Tlocal();
 			if (shard) {
 				auto& db = shard->GetDB();
@@ -593,9 +818,15 @@ void StringFamily::ClearDatabase(CommandContext* ctx) {
 	db->ClearAll();
 }
 
-int64_t StringFamily::ParseInt(const std::string& s) {
-	char* end;
-	return std::strtoll(s.c_str(), &end, 10);
+std::optional<int64_t> StringFamily::ParseInt(const std::string& s) {
+	int64_t value = 0;
+	const char* start = s.data();
+	const char* end = s.data() + s.size();
+	auto [ptr, ec] = std::from_chars(start, end, value, 10);
+	if (ec != std::errc() || ptr != end) {
+		return std::nullopt;
+	}
+	return value;
 }
 
 int64_t StringFamily::AdjustIndex(int64_t index, int64_t length) {
@@ -616,7 +847,11 @@ std::string StringFamily::Hello(const std::vector<NanoObj>& args) {
 	// Returns server information as a map (array of key-value pairs in RESP2)
 	int64_t proto_ver = 2; // Default to RESP2
 	if (args.size() > 1) {
-		proto_ver = ParseInt(args[1].toString());
+		auto parsed_proto_ver = ParseInt(args[1].ToString());
+		if (!parsed_proto_ver) {
+			return RESPParser::make_error("NOPROTO unsupported protocol version");
+		}
+		proto_ver = *parsed_proto_ver;
 		if (proto_ver < 2 || proto_ver > 3) {
 			return RESPParser::make_error("NOPROTO unsupported protocol version");
 		}

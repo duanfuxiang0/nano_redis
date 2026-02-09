@@ -12,14 +12,39 @@ struct CommandContext;
 
 class CommandRegistry {
 public:
+	enum CommandFlag : uint32_t {
+		kCmdFlagNone = 0,
+		kCmdFlagReadOnly = 1u << 0,
+		kCmdFlagWrite = 1u << 1,
+		kCmdFlagAdmin = 1u << 2,
+		kCmdFlagMultiKey = 1u << 3,
+		kCmdFlagNoKey = 1u << 4,
+	};
+
+	struct CommandMeta {
+		// Redis arity semantics:
+		// arity > 0  => exact argument count
+		// arity < 0  => minimum argument count is -arity
+		int32_t arity = 0;
+		int32_t first_key = 0;
+		int32_t last_key = 0;
+		int32_t key_step = 0;
+		uint32_t flags = kCmdFlagNone;
+	};
+
 	using CommandHandler = std::function<std::string(const std::vector<NanoObj>&)>;
 	using CommandHandlerWithContext = std::function<std::string(const std::vector<NanoObj>&, CommandContext*)>;
 
 	static CommandRegistry& Instance();
 
 	void RegisterCommand(const std::string& name, CommandHandler handler);
+	void RegisterCommand(const std::string& name, CommandHandler handler, const CommandMeta& meta);
 	void RegisterCommandWithContext(const std::string& name, CommandHandlerWithContext handler);
+	void RegisterCommandWithContext(const std::string& name, CommandHandlerWithContext handler,
+	                                const CommandMeta& meta);
 	std::string Execute(const std::vector<NanoObj>& args, CommandContext* ctx = nullptr);
+	const CommandMeta* FindMeta(absl::string_view name) const;
+	std::string BuildCommandInfoResponse() const;
 
 private:
 	CommandRegistry() = default;
@@ -78,4 +103,5 @@ private:
 	absl::flat_hash_map<std::string, CommandHandler, CaseInsensitiveHash, CaseInsensitiveEq> handlers;
 	absl::flat_hash_map<std::string, CommandHandlerWithContext, CaseInsensitiveHash, CaseInsensitiveEq>
 	    handlers_with_context;
+	absl::flat_hash_map<std::string, CommandMeta, CaseInsensitiveHash, CaseInsensitiveEq> command_meta;
 };

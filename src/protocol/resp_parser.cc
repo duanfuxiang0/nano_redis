@@ -54,6 +54,10 @@ const std::string& RESPParser::EmptyArrayResponse() {
 
 int RESPParser::FillBuffer() {
 	if (buffer_pos >= buffer_size) {
+		if (!allow_socket_read) {
+			no_read_need_more = true;
+			return -1;
+		}
 		ssize_t n = stream->recv(buffer, sizeof(buffer));
 		if (n <= 0) {
 			return -1;
@@ -333,6 +337,7 @@ int RESPParser::ParseValue(ParsedValue& value) {
 }
 
 int RESPParser::ParseCommand(std::vector<NanoObj>& args) {
+	no_read_need_more = false;
 	args.clear();
 	char c = ReadChar();
 	if (c == '\0') {
@@ -346,6 +351,26 @@ int RESPParser::ParseCommand(std::vector<NanoObj>& args) {
 		return -1;
 	}
 	return ParseInlineCommand(line, args);
+}
+
+RESPParser::TryParseResult RESPParser::TryParseCommandNoRead(std::vector<NanoObj>& args) {
+	const size_t saved_buffer_pos = buffer_pos;
+	const size_t saved_buffer_size = buffer_size;
+	const bool saved_allow_socket_read = allow_socket_read;
+
+	allow_socket_read = false;
+	int ret = ParseCommand(args);
+	const bool need_more_data = no_read_need_more;
+	allow_socket_read = saved_allow_socket_read;
+
+	if (ret >= 0) {
+		return TryParseResult::OK;
+	}
+
+	buffer_pos = saved_buffer_pos;
+	buffer_size = saved_buffer_size;
+	args.clear();
+	return need_more_data ? TryParseResult::NEED_MORE : TryParseResult::ERROR;
 }
 
 // --- Response Builders ---

@@ -1,12 +1,20 @@
 #include "core/command_context.h"
+#include "core/database.h"
 #include "server/engine_shard.h"
 #include "server/engine_shard_set.h"
 
 Database* CommandContext::GetDB() const {
+	Database* db = nullptr;
 	if (local_shard) {
-		return &local_shard->GetDB();
+		db = &local_shard->GetDB();
+	} else {
+		db = legacy_db;
 	}
-	return legacy_db;
+
+	if (db != nullptr && db->CurrentDB() != db_index) {
+		(void)db->Select(db_index);
+	}
+	return db;
 }
 
 Database* CommandContext::GetShardDB(size_t shard_id) const {

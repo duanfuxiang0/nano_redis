@@ -77,7 +77,6 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest EXCLUDE_FROM
 # Header files 
 set(REDIS_HEADERS
   include/protocol/resp_parser.h
-  include/server/server.h
   include/server/sharded_server.h
   include/server/proactor_pool.h
   include/server/engine_shard.h
@@ -89,6 +88,7 @@ set(REDIS_HEADERS
   include/command/hash_family.h
   include/command/set_family.h
   include/command/list_family.h
+  include/command/server_family.h
   include/core/command_context.h
   include/core/database.h
   include/core/dashtable.h
@@ -99,7 +99,6 @@ set(REDIS_HEADERS
 
 # Source files 
 set(REDIS_SOURCES
-  src/server/server.cc
   src/server/sharded_server.cc
   src/server/proactor_pool.cc
   src/server/engine_shard.cc
@@ -111,6 +110,7 @@ set(REDIS_SOURCES
   src/command/hash_family.cc
   src/command/set_family.cc
   src/command/list_family.cc
+  src/command/server_family.cc
   src/core/dashtable.cc
   src/core/database.cc
   src/core/nano_obj.cc
@@ -151,13 +151,13 @@ add_executable(unit_tests
   tests/unit/nano_obj_test.cc
   tests/unit/dashtable_debug_test.cc
   tests/unit/database_test.cc
-  tests/unit/dashtable_debug_test.cc
   tests/unit/hash_test.cc
   tests/unit/resp_parser_test.cc
   tests/unit/string_family_test.cc
 	tests/unit/hash_family_test.cc
 	tests/unit/set_family_test.cc
 	tests/unit/list_family_test.cc
+	tests/unit/server_family_test.cc
 	tests/unit/integration_test.cc
 	tests/unit/task_queue_test.cc
 	tests/unit/sharding_test.cc

@@ -5,23 +5,26 @@
 class EngineShard;
 class EngineShardSet;
 class Database;
+class Connection;
 
 struct CommandContext {
 	EngineShard* local_shard = nullptr;
 	EngineShardSet* shard_set = nullptr;
 	size_t shard_count = 1;
 	size_t db_index = 0;
-	void* connection = nullptr;
+	Connection* connection = nullptr;
 	Database* legacy_db = nullptr;
 
 	CommandContext() = default;
 
-	explicit CommandContext(Database* database, size_t index = 0)
-	    : shard_count(1), db_index(index), legacy_db(database) {
+	explicit CommandContext(Database* database, size_t index = 0, Connection* conn = nullptr)
+	    : shard_count(1), db_index(index), connection(conn), legacy_db(database) {
 	}
 
-	CommandContext(EngineShard* shard, EngineShardSet* shard_set, size_t shard_count, size_t db_index = 0)
-	    : local_shard(shard), shard_set(shard_set), shard_count(shard_count), db_index(db_index) {
+	CommandContext(EngineShard* shard, EngineShardSet* shard_set_value, size_t shard_count_value,
+	               size_t db_index_value = 0, Connection* conn = nullptr)
+	    : local_shard(shard), shard_set(shard_set_value), shard_count(shard_count_value), db_index(db_index_value),
+	      connection(conn) {
 	}
 
 	Database* GetDB() const;
