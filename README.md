@@ -4,8 +4,6 @@ NanoRedis is a teaching-oriented, Redis-like in-memory database that implements 
 thread-per-core sharded architecture. It supports RESP parsing, core data-type commands, pipelining (batched writes),
 TTL expiration (lazy + active), and a small set of management commands (`INFO/CONFIG/CLIENT/TIME/RANDOMKEY`).
 
-The implementation plan and current progress are tracked in `doc/nano_redis_v1.1.md`.
-
 ## Build
 
 ```bash

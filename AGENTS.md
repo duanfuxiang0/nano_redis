@@ -10,6 +10,41 @@ This file provides guidelines for AI coding agents working on the nano_redis cod
 - TTL expiration is implemented via lazy expiry on reads + an active expire cycle on each shard.
 - Management commands live in `ServerFamily` (`INFO/CONFIG/CLIENT/TIME/RANDOMKEY`).
 
+## Roadmap / Backlog (AI-focused, may go stale)
+
+Last curated from the v1.1 roadmap on **2026-02-10**. Prefer keeping this list short and actionable; if an item is
+completed, remove it here rather than accreting history.
+
+### Code Hygiene
+
+- [ ] NanoObj alias cleanup
+  - Goal: remove transitional lowercase aliases and `NOLINTNEXTLINE` wrappers, keep only CamelCase APIs.
+  - Acceptance:
+    - No remaining calls to the lowercase alias methods across `src/` and `tests/`.
+    - `cmake --build build -j` and `./build/unit_tests` pass.
+
+### TTL / Expiration (command surface completion)
+
+- [ ] Add missing commands: `PEXPIRE`, `PTTL`, `EXPIREAT`, `PEXPIREAT`
+- [ ] Extend `SET` options: `NX`, `XX`, `EXAT`, `PXAT` (currently `EX|PX` only)
+  - Acceptance:
+    - Unit tests for each command and edge cases (negative TTL, overflow, missing keys).
+    - Redis-like return conventions (`TTL`: `-2` missing key, `-1` no expire).
+
+### INFO / CONFIG
+
+- [ ] `INFO clients`: current connection count
+- [ ] Optional: `INFO memory` allocator stats
+- [ ] Optional: `INFO shards` per-shard key distribution
+- [ ] Optional: wire `CONFIG hz` to active-expire scheduling
+  - Acceptance:
+    - `INFO clients` returns a stable count.
+    - If `hz` is implemented: changing it affects active expiry scheduling.
+
+### CLIENT (optional expansion)
+
+- [ ] Expand beyond the current subset: `GETNAME/SETNAME/ID/INFO/LIST/KILL/PAUSE`
+
 ## Project Structure
 
 The project has a simple structure with three main directories:
@@ -20,8 +55,6 @@ The project has a simple structure with three main directories:
 
 ## External Reference Codebases
 
-* **./dragonfly** - A reference library located in the root directory for learning purposes. All code in this repository can be read and studied.
-* **./valkey** - A reference library located in the root directory for learning purposes. All code in this repository can be read and studied.
 * **./third_party/photonlibos** - A dependent library in the third_party directory. Focus on reading and learning its interfaces and APIs.
 
 ## Build, Lint, and Test Commands
@@ -116,7 +149,7 @@ clang-format -i --style=file <file>
 
 This project uses a shared-nothing, thread-per-core architecture inspired by Dragonfly.
 
-**See `doc/shared_nothing_architecture.md` for full details.**
+**See `doc/1.shared_nothing.md` for full details.**
 
 Key concepts:
 - N vCPUs (threads), each owning exactly one shard
