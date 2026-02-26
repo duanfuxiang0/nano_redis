@@ -6,10 +6,13 @@
 #include <cctype>
 #include <charconv>
 #include <cstdint>
+#include <fstream>
+#include <cstdio>
 #include <optional>
 #include <random>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 #include <gflags/gflags.h>
@@ -17,12 +20,19 @@
 
 #include "core/command_context.h"
 #include "core/database.h"
+#include "core/rdb_serializer.h"
 #include "core/util.h"
 #include "protocol/resp_parser.h"
 #include "server/connection.h"
 #include "server/engine_shard.h"
 #include "server/engine_shard_set.h"
 #include "server/proactor_pool.h"
+#include "server/slice_snapshot.h"
+
+#include <photon/thread/thread.h>
+#include <photon/thread/thread11.h>
+#include <photon/common/alog.h>
+#include <photon/common/alog-stdstring.h>
 
 DECLARE_int32(port);
 DECLARE_int32(num_shards);
@@ -39,6 +49,112 @@ constexpr uint32_t kAdmin = CommandRegistry::kCmdFlagAdmin;
 constexpr uint32_t kNoKey = CommandRegistry::kCmdFlagNoKey;
 
 const std::chrono::steady_clock::time_point kServerStartTime = std::chrono::steady_clock::now();
+
+class FileSink : public io::Sink {
+public:
+	explicit FileSink(std::string file_path) : path_(std::move(file_path)), file_(path_, std::ios::binary | std::ios::trunc) {
+	}
+
+	std::error_code Append(const uint8_t* data, size_t len) override {
+		if (!file_.good()) {
+			return std::make_error_code(std::errc::io_error);
+		}
+		file_.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(len));
+		if (!file_) {
+			return std::make_error_code(std::errc::io_error);
+		}
+		return {};
+	}
+
+	std::error_code FlushAndClose() {
+		if (!file_.is_open()) {
+			return {};
+		}
+		file_.flush();
+		if (!file_) {
+			return std::make_error_code(std::errc::io_error);
+		}
+		file_.close();
+		return {};
+	}
+
+	bool IsOpen() const {
+		return file_.is_open();
+	}
+
+	const std::string& Path() const {
+		return path_;
+	}
+
+private:
+	std::string path_;
+	std::ofstream file_;
+};
+
+std::error_code SaveToFile(const std::string& file_path, CommandContext* ctx) {
+	const std::string tmp_path = file_path + ".tmp";
+	FileSink sink(tmp_path);
+	if (!sink.IsOpen()) {
+		return std::make_error_code(std::errc::io_error);
+	}
+
+	RdbSerializer serializer(&sink, 0, static_cast<uint32_t>(ctx->GetShardCount()));
+	auto ec = serializer.SaveHeader();
+	if (ec) {
+		return ec;
+	}
+
+	for (size_t db_index = 0; db_index < Database::kNumDBs; ++db_index) {
+		for (size_t shard_id = 0; shard_id < ctx->GetShardCount(); ++shard_id) {
+			std::error_code shard_error;
+			if (ctx->IsSingleShard()) {
+				auto* db = ctx->GetDB();
+				if (db == nullptr) {
+					shard_error = std::make_error_code(std::errc::invalid_argument);
+				} else {
+					db->ForEachInDB(db_index, [&shard_error, db_index, &serializer](const NanoObj& key, const NanoObj& value, int64_t expire_ms) {
+						if (shard_error) {
+							return;
+						}
+						shard_error = serializer.SaveEntry(key, value, expire_ms, static_cast<uint32_t>(db_index));
+					});
+				}
+			} else {
+				shard_error = ctx->shard_set->Await(shard_id, [db_index, &serializer]() -> std::error_code {
+					auto* shard = EngineShard::Tlocal();
+					if (shard == nullptr) {
+						return std::make_error_code(std::errc::invalid_argument);
+					}
+					Database* db = &shard->GetDB();
+					std::error_code shard_db_error;
+					db->ForEachInDB(db_index, [&shard_db_error, db_index, &serializer](const NanoObj& key, const NanoObj& value, int64_t expire_ms) {
+						if (shard_db_error) {
+							return;
+						}
+						shard_db_error = serializer.SaveEntry(key, value, expire_ms, static_cast<uint32_t>(db_index));
+					});
+					return shard_db_error;
+				});
+			}
+			if (shard_error) {
+				return shard_error;
+			}
+		}
+	}
+
+	ec = serializer.SaveFooter();
+	if (ec) {
+		return ec;
+	}
+	ec = sink.FlushAndClose();
+	if (ec) {
+		return ec;
+	}
+	if (std::rename(sink.Path().c_str(), file_path.c_str()) != 0) {
+		return std::make_error_code(std::errc::io_error);
+	}
+	return {};
+}
 
 char ToUpperAscii(char c) {
 	return (c >= 'a' && c <= 'z') ? static_cast<char>(c - 'a' + 'A') : c;
@@ -253,7 +369,70 @@ bool KillClientById(uint64_t client_id, CommandContext* ctx) {
 	return killed;
 }
 
+std::error_code BgSaveToFile(const std::string& file_path, CommandContext* ctx) {
+	const std::string tmp_path = file_path + ".tmp";
+	FileSink sink(tmp_path);
+	if (!sink.IsOpen()) {
+		return std::make_error_code(std::errc::io_error);
+	}
+
+	const uint64_t epoch = ServerFamily::snapshot_epoch_.fetch_add(1) + 1;
+	const uint32_t shard_count = static_cast<uint32_t>(ctx->GetShardCount());
+	RdbSerializer serializer(&sink, 0, shard_count);
+	auto ec = serializer.SaveHeader();
+	if (ec) {
+		return ec;
+	}
+
+	for (size_t shard_id = 0; shard_id < ctx->GetShardCount(); ++shard_id) {
+		if (ctx->IsSingleShard()) {
+			auto* db = ctx->GetDB();
+			if (db == nullptr) {
+				return std::make_error_code(std::errc::invalid_argument);
+			}
+			SliceSnapshot snapshot(db, &serializer, epoch);
+			ec = snapshot.SerializeAllDBs();
+			if (ec) {
+				return ec;
+			}
+		} else {
+			ec = ctx->shard_set->Await(shard_id,
+			    [&serializer, epoch]() -> std::error_code {
+				    auto* shard = EngineShard::Tlocal();
+				    if (shard == nullptr) {
+					    return std::make_error_code(std::errc::invalid_argument);
+				    }
+				    SliceSnapshot snapshot(&shard->GetDB(), &serializer, epoch);
+				    return snapshot.SerializeAllDBs();
+			    });
+			if (ec) {
+				return ec;
+			}
+		}
+	}
+
+	ec = serializer.SaveFooter();
+	if (ec) {
+		return ec;
+	}
+	ec = sink.FlushAndClose();
+	if (ec) {
+		return ec;
+	}
+	if (std::rename(sink.Path().c_str(), file_path.c_str()) != 0) {
+		return std::make_error_code(std::errc::io_error);
+	}
+	return {};
+}
+
 } // namespace
+
+std::atomic<bool> ServerFamily::bg_save_in_progress_ {false};
+std::atomic<uint64_t> ServerFamily::snapshot_epoch_ {0};
+
+bool ServerFamily::IsBgSaveInProgress() {
+	return bg_save_in_progress_.load(std::memory_order_relaxed);
+}
 
 void ServerFamily::Register(CommandRegistry* registry) {
 	registry->RegisterCommandWithContext(
@@ -271,6 +450,12 @@ void ServerFamily::Register(CommandRegistry* registry) {
 	registry->RegisterCommandWithContext(
 	    "RANDOMKEY", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return RandomKey(args, ctx); },
 	    CommandMeta {1, 0, 0, 0, kReadOnly | kNoKey});
+	registry->RegisterCommandWithContext(
+	    "SAVE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return Save(args, ctx); },
+	    CommandMeta {-2, 0, 0, 0, kAdmin | kNoKey | kWrite});
+	registry->RegisterCommandWithContext(
+	    "BGSAVE", [](const std::vector<NanoObj>& args, CommandContext* ctx) { return BgSave(args, ctx); },
+	    CommandMeta {-2, 0, 0, 0, kAdmin | kNoKey | kWrite});
 }
 
 std::string ServerFamily::Info(const std::vector<NanoObj>& args, CommandContext* ctx) {
@@ -530,4 +715,101 @@ std::string ServerFamily::RandomKey(const std::vector<NanoObj>& args, CommandCon
 	}
 	const size_t random_index = PickRandomIndex(all_keys.size());
 	return RESPParser::MakeBulkString(all_keys[random_index]);
+}
+
+std::string ServerFamily::Save(const std::vector<NanoObj>& args, CommandContext* ctx) {
+	if (args.size() > 2) {
+		return RESPParser::MakeError("wrong number of arguments for 'SAVE'");
+	}
+	if (ctx == nullptr) {
+		return RESPParser::MakeError("ERR internal context");
+	}
+	const std::string file_path = (args.size() == 2) ? args[1].ToString() : "dump.nrdb";
+	auto ec = SaveToFile(file_path, ctx);
+	if (ec) {
+		return RESPParser::MakeError(std::string("SAVE failed: ") + ec.message());
+	}
+	return RESPParser::OkResponse();
+}
+
+std::string ServerFamily::BgSave(const std::vector<NanoObj>& args, CommandContext* ctx) {
+	if (args.size() > 2) {
+		return RESPParser::MakeError("wrong number of arguments for 'BGSAVE'");
+	}
+	if (ctx == nullptr) {
+		return RESPParser::MakeError("ERR internal context");
+	}
+	if (bg_save_in_progress_.load(std::memory_order_relaxed)) {
+		return RESPParser::MakeError("Background save already in progress");
+	}
+
+	const std::string file_path = (args.size() == 2) ? args[1].ToString() : "dump.nrdb";
+
+	if (ctx->IsSingleShard() || ctx->shard_set == nullptr) {
+		bg_save_in_progress_.store(true, std::memory_order_relaxed);
+		auto ec = BgSaveToFile(file_path, ctx);
+		bg_save_in_progress_.store(false, std::memory_order_relaxed);
+		if (ec) {
+			return RESPParser::MakeError(std::string("BGSAVE failed: ") + ec.message());
+		}
+		return RESPParser::MakeSimpleString("Background saving started");
+	}
+
+	bg_save_in_progress_.store(true, std::memory_order_relaxed);
+	EngineShardSet* shard_set = ctx->shard_set;
+	size_t shard_count = ctx->GetShardCount();
+
+	(void)photon::thread_create11([file_path, shard_set, shard_count]() {
+		const std::string tmp_path = file_path + ".tmp";
+		FileSink sink(tmp_path);
+		if (!sink.IsOpen()) {
+			LOG_WARN("BGSAVE: failed to open tmp file '`'", tmp_path);
+			bg_save_in_progress_.store(false, std::memory_order_relaxed);
+			return;
+		}
+
+		const uint64_t epoch = snapshot_epoch_.fetch_add(1) + 1;
+		RdbSerializer serializer(&sink, 0, static_cast<uint32_t>(shard_count));
+		auto ec = serializer.SaveHeader();
+		if (ec) {
+			LOG_WARN("BGSAVE: failed to write header (`)", ec.message());
+			bg_save_in_progress_.store(false, std::memory_order_relaxed);
+			return;
+		}
+
+		for (size_t shard_id = 0; shard_id < shard_count; ++shard_id) {
+			ec = shard_set->Await(shard_id,
+			    [&serializer, epoch]() -> std::error_code {
+				    auto* shard = EngineShard::Tlocal();
+				    if (shard == nullptr) {
+					    return std::make_error_code(std::errc::invalid_argument);
+				    }
+				    SliceSnapshot snapshot(&shard->GetDB(), &serializer, epoch);
+				    return snapshot.SerializeAllDBs();
+			    });
+			if (ec) {
+				LOG_WARN("BGSAVE: shard ` failed (`)", shard_id, ec.message());
+				bg_save_in_progress_.store(false, std::memory_order_relaxed);
+				return;
+			}
+		}
+
+		ec = serializer.SaveFooter();
+		if (!ec) {
+			ec = sink.FlushAndClose();
+		}
+		if (!ec) {
+			if (std::rename(sink.Path().c_str(), file_path.c_str()) != 0) {
+				ec = std::make_error_code(std::errc::io_error);
+			}
+		}
+		if (ec) {
+			LOG_WARN("BGSAVE: finalize failed (`)", ec.message());
+		} else {
+			LOG_INFO("BGSAVE: completed successfully to '`'", file_path);
+		}
+		bg_save_in_progress_.store(false, std::memory_order_relaxed);
+	});
+
+	return RESPParser::MakeSimpleString("Background saving started");
 }

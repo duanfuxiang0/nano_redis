@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <string>
 #include <vector>
 
@@ -17,4 +18,10 @@ public:
 	static std::string Client(const std::vector<NanoObj>& args, CommandContext* ctx);
 	static std::string Time(const std::vector<NanoObj>& args, CommandContext* ctx);
 	static std::string RandomKey(const std::vector<NanoObj>& args, CommandContext* ctx);
+	static std::string Save(const std::vector<NanoObj>& args, CommandContext* ctx);
+	static std::string BgSave(const std::vector<NanoObj>& args, CommandContext* ctx);
+	static bool IsBgSaveInProgress();
+
+	static std::atomic<bool> bg_save_in_progress_;
+	static std::atomic<uint64_t> snapshot_epoch_;
 };

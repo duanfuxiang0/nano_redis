@@ -93,8 +93,12 @@ set(REDIS_HEADERS
   include/core/database.h
   include/core/dashtable.h
   include/core/nano_obj.h
+  include/core/rdb_defs.h
+  include/core/rdb_loader.h
+  include/core/rdb_serializer.h
   include/core/util.h
   include/core/task_queue.h
+  include/server/slice_snapshot.h
 )
 
 # Source files 
@@ -113,10 +117,13 @@ set(REDIS_SOURCES
   src/command/server_family.cc
   src/core/dashtable.cc
   src/core/database.cc
+  src/core/rdb_loader.cc
+  src/core/rdb_serializer.cc
   src/core/nano_obj.cc
   src/core/util.cc
   src/core/task_queue.cc
   src/core/command_context.cc
+  src/server/slice_snapshot.cc
 )
 
 add_library(nano_redis STATIC ${REDIS_SOURCES} ${REDIS_HEADERS})
@@ -162,6 +169,7 @@ add_executable(unit_tests
 	tests/unit/task_queue_test.cc
 	tests/unit/sharding_test.cc
 	tests/unit/task_queue_await_test.cc
+	tests/unit/persistence_test.cc
 )
 target_link_libraries(unit_tests PRIVATE
   nano_redis

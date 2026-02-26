@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <type_traits>
 
@@ -16,6 +17,8 @@ constexpr float kSplitThreshold = 0.8f;
 template <typename K, typename V>
 class DashTable {
 public:
+	using PreModifyCallback = std::function<void(size_t dir_idx)>;
+
 	explicit DashTable(uint64_t initial_segment_count = kInitialSegmentCount,
 	                   uint64_t max_segment_size = kDefaultFixedBucketCount);
 
@@ -47,11 +50,46 @@ public:
 		}
 	}
 
+	template <typename FUNC>
+	void ForEachInSeg(size_t dir_idx, FUNC&& func) const {
+		if (dir_idx >= segment_directory.size()) {
+			return;
+		}
+		for (const auto& [key, value] : segment_directory[dir_idx]->table) {
+			func(key, value);
+		}
+	}
+
+	void SetPreModifyCallback(PreModifyCallback cb) {
+		pre_modify_cb_ = std::move(cb);
+	}
+
+	void ClearPreModifyCallback() {
+		pre_modify_cb_ = nullptr;
+	}
+
+	size_t DirSize() const {
+		return segment_directory.size();
+	}
+
+	uint64_t GetSegVersion(size_t dir_idx) const {
+		return segment_directory[dir_idx]->version;
+	}
+
+	void SetSegVersion(size_t dir_idx, uint64_t ver) {
+		segment_directory[dir_idx]->version = ver;
+	}
+
+	size_t NextUniqueSegment(size_t sid) const {
+		return NextSeg(sid);
+	}
+
 private:
 	struct Segment {
 		ankerl::unordered_dense::map<K, V, ankerl::unordered_dense::hash<K>> table;
 		uint8_t local_depth;
 		uint32_t segment_id;
+		uint64_t version = 0;
 
 		explicit Segment(uint8_t depth, uint32_t id, uint64_t fixed_bucket_count)
 		    : table(fixed_bucket_count), local_depth(depth), segment_id(id) {
@@ -69,6 +107,7 @@ private:
 	std::vector<std::shared_ptr<Segment>> segment_directory;
 	uint8_t global_depth;
 	uint64_t max_segment_size;
+	PreModifyCallback pre_modify_cb_;
 
 public:
 	uint8_t GetGlobalDepth() const {

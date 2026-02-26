@@ -39,9 +39,41 @@ public:
 	bool Set(const NanoObj& key, const NanoObj& value);
 	bool Set(const NanoObj& key, NanoObj&& value);
 
-private:
+	template <typename Func>
+	void ForEachInDB(size_t db_index, Func&& func) const {
+		if (db_index >= kNumDBs || tables[db_index] == nullptr) {
+			return;
+		}
+		const int64_t now_ms = CurrentTimeMs();
+		tables[db_index]->ForEach([db_index, now_ms, &func, this](const NanoObj& key, const NanoObj& value) {
+			const int64_t* expire_at_ms = expire_tables[db_index]->Find(key);
+			if (expire_at_ms != nullptr && *expire_at_ms <= now_ms) {
+				return;
+			}
+			const int64_t expire_ms = (expire_at_ms == nullptr ? 0 : *expire_at_ms);
+			func(key, value, expire_ms);
+		});
+	}
+
+public:
 	using Table = DashTable<NanoObj, NanoObj>;
 	using ExpireTable = DashTable<NanoObj, int64_t>;
+
+	Table* GetTable(size_t db_index) {
+		if (db_index >= kNumDBs) {
+			return nullptr;
+		}
+		return tables[db_index].get();
+	}
+
+	ExpireTable* GetExpireTable(size_t db_index) {
+		if (db_index >= kNumDBs) {
+			return nullptr;
+		}
+		return expire_tables[db_index].get();
+	}
+
+private:
 
 	static int64_t CurrentTimeMs();
 	bool IsExpiredInDB(size_t db_index, const NanoObj& key, int64_t now_ms) const;

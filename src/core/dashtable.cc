@@ -51,6 +51,9 @@ DashTable<K, V>& DashTable<K, V>::operator=(DashTable&& other) noexcept {
 template <typename K, typename V>
 void DashTable<K, V>::Insert(const K& key, V&& value) {
 	uint64_t seg_idx = GetSegmentIndex(key);
+	if (pre_modify_cb_) {
+		pre_modify_cb_(seg_idx);
+	}
 	Segment* segment = segment_directory[seg_idx].get();
 
 	segment->table.insert_or_assign(key, std::move(value));
@@ -82,6 +85,9 @@ const V* DashTable<K, V>::Find(const K& key) const {
 template <typename K, typename V>
 bool DashTable<K, V>::Erase(const K& key) {
 	uint64_t seg_idx = GetSegmentIndex(key);
+	if (pre_modify_cb_) {
+		pre_modify_cb_(seg_idx);
+	}
 	auto& segment = segment_directory[seg_idx];
 
 	return segment->table.erase(key) > 0;
@@ -160,6 +166,7 @@ void DashTable<K, V>::SplitSegment(uint32_t seg_id) {
 	uint32_t chunk_mid = start_idx + chunk_size / 2;
 
 	auto new_segment = std::make_shared<Segment>(source->local_depth + 1, chunk_mid, source->table.size() / 2);
+	new_segment->version = source->version;
 
 	auto source_shared_ptr = segment_directory[seg_id];
 
