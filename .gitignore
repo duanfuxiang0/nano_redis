@@ -10,5 +10,11 @@ CMakeFiles/
 cmake_install.cmake
 compile_commands.json
 Makefile
+
+.swo
+.swp
+
+.noindex
+Workspace.toml
 AGENTS.md
 CLAUDE.md
